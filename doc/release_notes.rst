@@ -1,8 +1,6 @@
-
+.. SPDX-FileCopyrightText: Contributors to PyPSA-Eur <https://github.com/pypsa/pypsa-eur>
 ..
-  SPDX-FileCopyrightText: Contributors to PyPSA-Eur <https://github.com/pypsa/pypsa-eur>
-
-  SPDX-License-Identifier: CC-BY-4.0
+.. SPDX-License-Identifier: CC-BY-4.0
 
 ##########################################
 Release Notes
@@ -45,6 +43,12 @@ Upcoming Release
 
 * Fix `retrieve_eurostat_data` and `retrieve_eurostat_household_data` on Windows by avoiding a double access to a temporary file.
   (https://github.com/PyPSA/pypsa-eur/pull/1825)
+
+* Remove pinned environment files mention in the pre-commit-config-yaml (https://github.com/PyPSA/pypsa-eur/pull/1837)
+
+* Increase minimum required `pypsa` version to 0.33.2 (https://github.com/PyPSA/pypsa-eur/pull/1849)
+
+* Running perfect foresight is now marked as unstable and may not work as expected.
 
 PyPSA-Eur v2025.07.0 (11th July 2025)
 =====================================
@@ -110,6 +114,9 @@ PyPSA-Eur v2025.07.0 (11th July 2025)
 * Small plotting improvements.
   (https://github.com/PyPSA/pypsa-eur/pull/1694https://github.com/PyPSA/pypsa-eur/pull/1727)
 
+* The `plotting|map|color_geomap` was renamed to `plotting|map|geomap_colors` to align
+  with the new PyPSA API.
+  
 **Bugfixes and Compatibility**
 
 * Select correct capital costs for floating offshore wind. Previously, the same
