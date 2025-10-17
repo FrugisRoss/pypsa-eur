@@ -69,6 +69,7 @@ d1gam3xoknrgr2.cloudfront.net/
 *.geojson
 
 *.ipynb
+!ElecOnly_Plotting.ipynb
 
 merger-todos.md
 
