@@ -66,6 +66,10 @@ def plot_costs():
         snakemake.input.costs, index_col=list(range(3)), header=list(range(n_header))
     )
 
+    nice_names = snakemake.params.plotting["nice_names"]
+    nice_to_internal = {v: k for k, v in nice_names.items()}
+    cost_df["carrier"] = cost_df["carrier"].replace(nice_to_internal)
+
     df = cost_df.groupby("carrier").sum()
 
     # convert to billions
