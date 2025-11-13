@@ -63,12 +63,16 @@ def build_nodal_industrial_energy_demand():
     for country, sector in product(countries, sectors):
         buses = keys.index[keys.country == country]
         mapping = sector_mapping.get(sector, "population")
+        print(f"mapping: {mapping}")
 
-        key = keys.loc[buses, mapping]
+        if mapping not in keys.columns:
+            mapping = "population"
+
+        key = keys.loc[buses, mapping] 
         demand = industrial_demand[country, sector]
 
-        outer = pd.DataFrame(
-            np.outer(key, demand), index=key.index, columns=demand.index
+        outer = pd.DataFrame(                                            #creates a dataframe for each industrial sector, that has as columns the different nodes and as indexes the different energy carriers
+            np.outer(key, demand), index=key.index, columns=demand.index #multiplies the specific energy demand of each sector times the demand for the product of each sector, therefore obtaining the energy demand per each sector
         )
 
         nodal_demand.loc[buses] += outer
