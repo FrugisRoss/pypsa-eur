@@ -70,6 +70,8 @@ d1gam3xoknrgr2.cloudfront.net/
 
 *.ipynb
 !ElecOnly_Plotting.ipynb
+!SectorCoupled_Plotting.ipynb
+!DK_clusters.ipynb
 
 merger-todos.md
 
