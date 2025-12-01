@@ -506,7 +506,7 @@ if config["enable"]["retrieve"]:
     # Website: https://www.protectedplanet.net/en/thematic-areas/wdpa
     rule download_wdpa:
         input:
-            zip_file=storage(url, keep_local=True),
+            zip_file=storage(url, keep_local=True) if url else [],
         params:
             zip_file="WDPA_shp.zip",
             folder_name="WDPA",
