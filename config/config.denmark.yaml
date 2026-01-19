@@ -889,7 +889,7 @@ industry:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs
 costs:
-  year: 2030
+  year: 2050
   version: v0.13.3
   social_discountrate: 0.02
   fill_values:

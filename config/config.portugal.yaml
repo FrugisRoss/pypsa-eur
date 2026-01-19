@@ -17,7 +17,7 @@ remote:
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
   prefix: ""
-  name: "ES_test"
+  name: "PT_test"
   scenarios:
     enable: false
     file: config/scenarios.yaml
@@ -46,7 +46,7 @@ scenario:
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#countries
 countries:
 
-- ES
+- PT
 
 
 
