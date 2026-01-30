@@ -206,7 +206,7 @@ def add_solar_potential_constraints(n: pypsa.Network, config: dict) -> None:
 
     solar_carriers = ["solar", "solar-hsat"]
     solar = n.generators[
-        n.generators.carrier.isin(solar_carriers) & n.generators.p_nom_extendable
+        n.generators.carrier.isin(solar_carriers) & n.generators.p_nom_extendable 
     ].index
 
     solar_today = n.generators[
