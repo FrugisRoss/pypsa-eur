@@ -35,7 +35,7 @@ foresight: overnight
 # Wildcard docs in https://pypsa-eur.readthedocs.io/en/latest/wildcards.html
 scenario:
   clusters:
-  - 100
+  - 20
   opts:
   - ''
   sector_opts:

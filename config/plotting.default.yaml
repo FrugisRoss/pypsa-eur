@@ -5,7 +5,7 @@
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#plotting
 plotting:
   map:
-    boundaries: [-11, 30, 34, 71]
+    boundaries: [-11,25, 43,72]
     geomap_colors:
       ocean: white
       land: white
