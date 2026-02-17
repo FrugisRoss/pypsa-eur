@@ -17,7 +17,7 @@ remote:
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
   prefix: ""
-  name: "Nordics20_test"
+  name: "Iberic5_test_nocluster"
   scenarios:
     enable: false
     file: config/scenarios.yaml
@@ -35,7 +35,7 @@ foresight: overnight
 # Wildcard docs in https://pypsa-eur.readthedocs.io/en/latest/wildcards.html
 scenario:
   clusters:
-  - 20
+  - 5
   opts:
   - ''
   sector_opts:
@@ -46,12 +46,9 @@ scenario:
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#countries
 countries:
 
-- DK
-- DE
-- SE
-- 'NO'
-- GB
-- NL
+- ES
+- PT
+- FR
 
 
 
