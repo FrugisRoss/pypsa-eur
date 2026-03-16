@@ -181,6 +181,7 @@ def get_energy_ratio(country, eurostat_dir, jrc_dir, year, snakemake):
         e_country *= tj_to_ktoe
     else:
         ct_eurostat = country.replace("GB", "UK")
+        print(country)
         # estimate physical output, energy consumption in the sector and country
         fn = f"{eurostat_dir}/{ct_eurostat}-Energy-balance-sheets-April-2023-edition.xlsb"
         df = pd.read_excel(
@@ -231,6 +232,9 @@ def industry_production_per_country(country, year, eurostat_dir, jrc_dir, snakem
     demand = pd.concat([get_sector_data(s, ct) for s in sect2sub])
 
     if country not in eu27:
+        print (eu27)
+        print (country)
+        #print (country.dtype)
         demand *= get_energy_ratio(
             country,
             eurostat_dir,
@@ -247,6 +251,8 @@ def industry_production_per_country(country, year, eurostat_dir, jrc_dir, snakem
 def industry_production(countries, year, eurostat_dir, jrc_dir):
     nprocesses = snakemake.threads
     disable_progress = snakemake.config["run"].get("disable_progressbar", False)
+    print(f"Countries list: {countries}")
+    print(f"Countries types: {[type(c) for c in countries]}")
 
     func = partial(
         industry_production_per_country,
@@ -321,6 +327,8 @@ if __name__ == "__main__":
     set_scenario_config(snakemake)
 
     countries = snakemake.params.countries
+
+    print(f"Countries list: {countries}")
 
     year = snakemake.params.industry["reference_year"]
 
