@@ -20,7 +20,7 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
         for renewable in renewables:
 
             nodes_renewables_cf[(node, renewable)] = pd.DataFrame(
-                index=n.generators['p_nom_max'].loc[n.generators.index.astype(str).str.contains(rf"{node}.*{renewable}$")].index,
+                index=n.generators['p_nom_max'].loc[n.generators.index.astype(str).str.contains(r"{node}.*{renewable}$")].index,
                 columns=["p_max_pu","p_nom_max"]  
             )
 
@@ -28,9 +28,11 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
 
             #we are considering the highest mean p_min_pu to determine the best generators per renewable available
 
+
             nodes_renewables_cf[(node, renewable)] ["p_max_pu"] = n.generators_t['p_max_pu'].loc[:, n.generators_t['p_max_pu'].columns.astype(str).str.contains(rf"{node}.*{renewable}$")].mean()
             nodes_renewables_cf[(node, renewable)] ["p_nom_max"] = n.generators['p_nom_max'].loc[n.generators.index.astype(str).str.contains(rf"{node}.*{renewable}$")]
             nodes_renewables_cf[(node, renewable)] ["p_nom_min"] = n.generators['p_nom_min'].loc[n.generators.index.astype(str).str.contains(rf"{node}.*{renewable}$")]
+
 
             nodes_renewables_cf[(node, renewable)] = nodes_renewables_cf[(node, renewable)].sort_values("p_max_pu", ascending=False)
             nodes_renewables_cf[(node, renewable)] ["p_nom_avail"] = nodes_renewables_cf[(node, renewable)] ["p_nom_max"] - nodes_renewables_cf[(node, renewable)] ["p_nom_min"] #we make available for the cluster only what is not installed yet
@@ -43,7 +45,10 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
             while nodes_renewables_cf[(node, renewable)].iloc[0:number_gen+1]["p_nom_avail"].sum() <= cluster_size:
 
                 if number_gen >= len(nodes_renewables_cf[(node, renewable)]):
+
+
                     print(f"Not enough {renewable} capacity abailable at node {node} to reach cluster_size.")
+
                     insufficient_generators = True
                     break
 
@@ -64,7 +69,7 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
 
                 ### Electricity bus and generators ###
 
-                if not n.buses.index.str.contains(rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' cluster'}$").any():
+                if not n.buses.index.str.contains(r"{clusters_generators[(node, renewable)].loc[idx].bus + ' cluster'}$").any():
         
                     n.add(
                         "Bus",
@@ -106,36 +111,36 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
 
                 ### H2 bus ##
 
-                if not n.buses.index.str.contains(rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2 cluster'}$").any():
+                if not n.buses.index.str.contains(r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2 cluster'}$").any():
 
                     n.add(
                         "Bus",
                         name=clusters_generators[(node, renewable)].loc[idx].bus + " H2 cluster",
-                        v_nom=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "v_nom"],
-                        x=n.buses.at[rf"{clusters_generators[(node,renewable)].loc[idx].bus + ' H2'}", "x"],
-                        y=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "y"],
-                        unit=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "unit"],
-                        location=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "location"],
-                        country=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "country"],
-                        carrier=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "carrier"],
-                        control=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "control"],
-                        substation_lv=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "substation_lv"],
-                        substation_off=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "substation_off"],
+                        v_nom=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "v_nom"],
+                        x=n.buses.at[r"{clusters_generators[(node,renewable)].loc[idx].bus + ' H2'}", "x"],
+                        y=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "y"],
+                        unit=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "unit"],
+                        location=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "location"],
+                        country=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "country"],
+                        carrier=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "carrier"],
+                        control=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "control"],
+                        substation_lv=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "substation_lv"],
+                        substation_off=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' H2'}", "substation_off"],
                     )
 
                 ### methanol bus ###
 
-                if not n.buses.index.str.contains(rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' methanol cluster'}$").any():
+                if not n.buses.index.str.contains(r"{clusters_generators[(node, renewable)].loc[idx].bus + ' methanol cluster'}$").any():
 
                     n.add(
                         "Bus",
                         name=clusters_generators[(node, renewable)].loc[idx].bus + " methanol cluster",
                         v_nom=n.buses.at["EU methanol", "v_nom"],
-                        x=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus}", "x"],
-                        y=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus }", "y"],
+                        x=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus}", "x"],
+                        y=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus }", "y"],
                         unit=n.buses.at["EU methanol", "unit"],
-                        location=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus  }", "location"],
-                        country=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus }", "country"],
+                        location=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus  }", "location"],
+                        country=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus }", "country"],
                         carrier=n.buses.at["EU methanol", "carrier"],
                         control=n.buses.at["EU methanol", "control"],
                         substation_lv=n.buses.at["EU methanol", "substation_lv"],
@@ -144,21 +149,21 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
                 
                 ### Batteries bus ###
 
-                if not n.buses.index.str.contains(rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery cluster'}$").any():
+                if not n.buses.index.str.contains(r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery cluster'}$").any():
 
                     n.add(
                         "Bus",
                         name=clusters_generators[(node, renewable)].loc[idx].bus + " battery cluster",
-                        v_nom=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "v_nom"],
-                        x=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "x"],
-                        y=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "y"],
-                        unit=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "unit"],
-                        location=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "location"],
-                        country=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "country"],
-                        carrier=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "carrier"],
-                        control=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "control"],
-                        substation_lv=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "substation_lv"],
-                        substation_off=n.buses.at[rf"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "substation_off"],
+                        v_nom=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "v_nom"],
+                        x=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "x"],
+                        y=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "y"],
+                        unit=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "unit"],
+                        location=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "location"],
+                        country=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "country"],
+                        carrier=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "carrier"],
+                        control=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "control"],
+                        substation_lv=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "substation_lv"],
+                        substation_off=n.buses.at[r"{clusters_generators[(node, renewable)].loc[idx].bus + ' battery'}", "substation_off"],
                     )
 
 
@@ -166,7 +171,7 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
                 if idx == nodes_renewables_cf[(node, renewable)].iloc[number_gen].name:
                     n.generators.loc[n.generators.index == idx, "p_nom_max"] =n.generators.loc[n.generators.index == idx, "p_nom_min"]+remaining_avail_capacity
 
-                    print(f"Residual capacity of generator {clusters_generators[(node, renewable)].loc[idx].name} is {n.generators.loc[n.generators.index == idx, 'p_nom_max']} MW")
+                    print(r"Residual capacity of generator {clusters_generators[(node, renewable)].loc[idx].name} is {n.generators.loc[n.generators.index == idx, 'p_nom_max']} MW")
                 
                 else:
 
@@ -185,7 +190,7 @@ def add_cluster_links(n, nodes_with_clusters, cluster_cost_reduction, ongrid):
 
         ### H2 Electrolysis ###
 
-        link_name = f"{node} H2 Electrolysis"
+        link_name = r"{node} H2 Electrolysis"
 
         n.add(
             "Link",
@@ -205,8 +210,8 @@ def add_cluster_links(n, nodes_with_clusters, cluster_cost_reduction, ongrid):
 
         ### Methanolization ###
 
-        link_name = f"{node} methanolisation"
-        cluster_methanol_bus_name = f"{node} methanol cluster"
+        link_name = r"{node} methanolisation"
+        cluster_methanol_bus_name = r"{node} methanol cluster"
 
         n.add(
             "Link",
@@ -232,7 +237,7 @@ def add_cluster_links(n, nodes_with_clusters, cluster_cost_reduction, ongrid):
 
         n.add(
             "Link",
-            name=f"{node} methanol cluster",
+            name=r"{node} methanol cluster",
             bus0=cluster_methanol_bus_name,
             bus1=n.links.at[link_name, "bus1"],
             p_nom_extendable=True,
@@ -250,14 +255,14 @@ def add_cluster_links(n, nodes_with_clusters, cluster_cost_reduction, ongrid):
 
         ### Electricity connection to grid ###
 
-        link_name = f"{node} electricity cluster"
+        link_name = r"{node} electricity cluster"
         
         n.add(
             "Link",
             name=link_name,
-            bus0=f"{node} cluster",
-            bus1=f"{node}",
-            carrier=n.buses.at[f"{node}", "carrier"],  
+            bus0=r"{node} cluster",
+            bus1=r"{node}",
+            carrier=n.buses.at[r"{node}", "carrier"],  
             p_nom_extendable=True,
             efficiency=1.0,
             capital_cost=0.0,
@@ -266,13 +271,13 @@ def add_cluster_links(n, nodes_with_clusters, cluster_cost_reduction, ongrid):
             overwrite=True,
         )
 
-        link_name = f"{node} electricity cluster back"
+        link_name = r"{node} electricity cluster back"
         n.add(
             "Link",
             name=link_name,
-            bus0=f"{node}",
-            bus1=f"{node} cluster",
-            carrier=n.buses.at[f"{node}", "carrier"],  
+            bus0=r"{node}",
+            bus1=r"{node} cluster",
+            carrier=n.buses.at[r"{node}", "carrier"],  
             p_nom_extendable=True,
             efficiency=1.0,
             capital_cost=0.0,
@@ -282,15 +287,15 @@ def add_cluster_links(n, nodes_with_clusters, cluster_cost_reduction, ongrid):
         )
 
     else:
-        if f"{node} cluster electricity" in n.links.index:
+        if r"{node} cluster electricity" in n.links.index:
             n.remove(
                 "Link",
-                name=f"{node} cluster electricity",
+                name=r"{node} cluster electricity",
             )
-        if f"{node} cluster electricity back" in n.links.index:
+        if r"{node} cluster electricity back" in n.links.index:
             n.remove(
                 "Link",
-                name=f"{node} cluster electricity back",
+                name=r"{node} cluster electricity back",
             )
 
     return n
@@ -299,7 +304,7 @@ def add_cluster_storages(n, nodes_with_clusters, cluster_cost_reduction):
 
     for node in nodes_with_clusters:
 
-        link_name = f"{node} H2 Store"
+        link_name = r"{node} H2 Store"
 
     
         n.add("Store",
@@ -315,14 +320,14 @@ def add_cluster_storages(n, nodes_with_clusters, cluster_cost_reduction):
             overwrite=True,
             )
         
-        link_name = f"{node} battery"
+        link_name = r"{node} battery"
 
 
         n.add(
                 "Link",
                 name=link_name + " charger cluster",
-                bus0=f"{node} cluster",
-                bus1=f"{node} battery cluster",
+                bus0=r"{node} cluster",
+                bus1=r"{node} battery cluster",
                 carrier=n.buses.at[link_name, "carrier"],   
                 p_nom_extendable=True,
                 efficiency=1.0,
@@ -334,8 +339,8 @@ def add_cluster_storages(n, nodes_with_clusters, cluster_cost_reduction):
         n.add(
                 "Link",
                 name=link_name + " discharger cluster",
-                bus0=f"{node} battery cluster",
-                bus1=f"{node} cluster",
+                bus0=r"{node} battery cluster",
+                bus1=r"{node} cluster",
                 carrier=n.buses.at[link_name, "carrier"],
                 p_nom_extendable=True,
                 efficiency=1.0,
@@ -347,7 +352,7 @@ def add_cluster_storages(n, nodes_with_clusters, cluster_cost_reduction):
 
         n.add("Store",
             name=link_name + " cluster" ,
-            bus=f"{node} battery cluster",
+            bus=r"{node} battery cluster",
             carrier=n.stores.at[link_name, "carrier"],
             e_nom_extendable=True,
             capital_cost=n.stores.at[link_name, "capital_cost"]*(1-cluster_cost_reduction),

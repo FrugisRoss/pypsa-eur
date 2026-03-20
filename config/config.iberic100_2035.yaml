@@ -16,11 +16,11 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: ""
-  name: "Iberic100"
+  prefix: "Iberic100_2035"
+  name: "all"
   scenarios:
-    enable: false
-    file: config/scenarios.yaml
+    enable: true
+    file: config/scenarios.costs.yaml
   disable_progressbar: false
   shared_resources:
     policy: false
@@ -41,7 +41,8 @@ scenario:
   sector_opts:
   - '12h'
   planning_horizons:
-  - 2050
+  - '2035'
+  
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#countries
 countries:
@@ -157,7 +158,7 @@ renewable:
       turbine: Vestas_V112_3MW
       smooth: false
       add_cutout_windspeed: true
-    resource_classes: 5
+    resource_classes: 1
     capacity_per_sqkm: 3
     # correction_factor: 0.93
     corine:
@@ -239,7 +240,7 @@ renewable:
       orientation:
         slope: 35.
         azimuth: 180.
-    resource_classes: 5
+    resource_classes: 1
     capacity_per_sqkm: 5.1
     # correction_factor: 0.854337
     corine: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 26, 31, 32]
@@ -892,7 +893,7 @@ industry:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs
 costs:
-  year: 2050
+  year: 2035
   version: v0.13.3
   social_discountrate: 0.02
   fill_values:

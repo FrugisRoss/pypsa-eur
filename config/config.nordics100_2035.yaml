@@ -16,11 +16,11 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: ""
-  name: "Nordics_test"
+  prefix: "Noridcs100_2035"
+  name: "all"
   scenarios:
-    enable: false
-    file: config/scenarios.yaml
+    enable: true
+    file: config/scenarios.costs.yaml
   disable_progressbar: false
   shared_resources:
     policy: false
@@ -41,10 +41,12 @@ scenario:
   sector_opts:
   - '12h'
   planning_horizons:
-  - 2050
+  - '2035'
+
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#countries
 countries:
+
 
 - DK
 - DE
@@ -129,7 +131,7 @@ electricity:
     enable: false
     by_country: false
 
-  transmission_limit: v1.0
+  transmission_limit: v1.25
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#atlite
 atlite:
@@ -160,7 +162,7 @@ renewable:
       turbine: Vestas_V112_3MW
       smooth: false
       add_cutout_windspeed: true
-    resource_classes: 5
+    resource_classes: 1
     capacity_per_sqkm: 3
     # correction_factor: 0.93
     corine:
@@ -242,7 +244,7 @@ renewable:
       orientation:
         slope: 35.
         azimuth: 180.
-    resource_classes: 5
+    resource_classes: 1
     capacity_per_sqkm: 5.1
     # correction_factor: 0.854337
     corine: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 26, 31, 32]
@@ -693,7 +695,7 @@ sector:
   co2_sequestration_cost: 30
   co2_sequestration_lifetime: 50
   co2_spatial: true
-  co2_network: true
+  co2_network: false
   co2_network_cost_factor: 1
   cc_fraction: 0.9
   hydrogen_underground_storage: true
@@ -744,7 +746,7 @@ sector:
       compression_per_1000km: 0.01
     electricity distribution grid:
       efficiency_static: 0.97
-  H2_network: true
+  H2_network: false
   gas_network: true
   H2_retrofit: false
   H2_retrofit_capacity_per_CH4: 0.6
