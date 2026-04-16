@@ -188,7 +188,7 @@ def assign_cluster_generators_and_electricity_buses_to_carbon_clusters(n, cluste
     nodes_renewables_cf = {}                #dictionary of dataframes by node and renewable type, sorting the generators by average capacity factor (ascending order)
     clusters_generators={}                      #dictionary of dataframes by node and renewable type, containing the generators assigned to the cluster  
 
-    for node in nodes_with_clusters:
+    for node in nodes_with_clusters.copy():
 
         insufficient_generators = False  #if one node doesn't have enough renewable capacity even for one of the renewable in renewables, then the cluster cannot be created and we skip to the next node. 
 
@@ -215,13 +215,14 @@ def assign_cluster_generators_and_electricity_buses_to_carbon_clusters(n, cluste
 
                 if number_gen >= len(nodes_renewables_cf[(node, renewable)]):
                     print(f"Not enough {renewable} generators at node {node} to reach cluster_size.")
+                    nodes_with_clusters.remove(node)
                     insufficient_generators = True
                     break
 
                 number_gen += 1
 
             if insufficient_generators:
-                continue
+                break
 
 
             clusters_generators[(node, renewable)]  = n.generators.loc[nodes_renewables_cf[(node, renewable)].index[0:number_gen+1]]
