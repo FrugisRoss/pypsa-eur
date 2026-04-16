@@ -13,7 +13,7 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
     nodes_renewables_cf = {}                #dictionary of dataframes by node and renewable type, sorting the generators by average capacity factor (descending order)
     clusters_generators={}                      #dictionary of dataframes by node and renewable type, containing the generators assigned to the cluster  
 
-    for node in nodes_with_clusters:
+    for node in nodes_with_clusters.copy():
 
         insufficient_generators = False  #if one node doesn't have enough renewable capacity even for one of the renewable in renewables, then the cluster cannot be created and we skip to the next node. 
 
@@ -29,9 +29,9 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
             #we are considering the highest mean p_min_pu to determine the best generators per renewable available
 
 
-            nodes_renewables_cf[(node, renewable)] ["p_max_pu"] = n.generators_t['p_max_pu'].loc[:, n.generators_t['p_max_pu'].columns.astype(str).str.contains(rf"{node} .*{renewable}$")].mean()
-            nodes_renewables_cf[(node, renewable)] ["p_nom_max"] = n.generators['p_nom_max'].loc[n.generators.index.astype(str).str.contains(rf"{node} .*{renewable}$")]
-            nodes_renewables_cf[(node, renewable)] ["p_nom_min"] = n.generators['p_nom_min'].loc[n.generators.index.astype(str).str.contains(rf"{node} .*{renewable}$")]
+            nodes_renewables_cf[(node, renewable)] ["p_max_pu"] = n.generators_t['p_max_pu'].loc[:, n.generators_t['p_max_pu'].columns.astype(str).str.contains(f"{node} .*{renewable}$")].mean()
+            nodes_renewables_cf[(node, renewable)] ["p_nom_max"] = n.generators['p_nom_max'].loc[n.generators.index.astype(str).str.contains(f"{node} .*{renewable}$")]
+            nodes_renewables_cf[(node, renewable)] ["p_nom_min"] = n.generators['p_nom_min'].loc[n.generators.index.astype(str).str.contains(f"{node} .*{renewable}$")]
 
 
             nodes_renewables_cf[(node, renewable)] = nodes_renewables_cf[(node, renewable)].sort_values("p_max_pu", ascending=False)
@@ -49,14 +49,16 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
 
                     print(f"Not enough {renewable} capacity abailable at node {node} to reach cluster_size.")
 
+                    nodes_with_clusters.remove(node)
+
                     insufficient_generators = True
                     break
 
                 number_gen += 1
 
             if insufficient_generators:
-                continue
-
+                break  # exits the for renewable loop → goes to next node
+    
 
             clusters_generators[(node, renewable)]  = n.generators.loc[nodes_renewables_cf[(node, renewable)].index[0:number_gen+1]]
             remaining_avail_capacity = nodes_renewables_cf[(node, renewable)].iloc[0:number_gen+1]["p_nom_avail"].sum() - cluster_size
@@ -86,7 +88,11 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
                         control=n.buses.at[clusters_generators[(node, renewable)].loc[idx].bus, "control"],
                         substation_lv=n.buses.at[clusters_generators[(node, renewable)].loc[idx].bus, "substation_lv"],
                         substation_off=n.buses.at[clusters_generators[(node, renewable)].loc[idx].bus, "substation_off"],
+                        overwrite=True,
                     )
+                
+                else:
+                    print(f"Bus {clusters_generators[(node, renewable)].loc[idx].bus + ' cluster'} already exists in the network.")
 
                 p_nom_avail= clusters_generators[(node, renewable)].loc[idx].p_nom_max - clusters_generators[(node, renewable)].loc[idx].p_nom_min
 
@@ -100,8 +106,8 @@ def assign_cluster_generators_and_electricity_buses(n, cluster_size, cluster_cos
                     marginal_cost=clusters_generators[(node, renewable)].loc[idx].marginal_cost*(1-cluster_cost_reduction),
                     capital_cost=clusters_generators[(node, renewable)].loc[idx].capital_cost*(1-cluster_cost_reduction),
                     efficiency=clusters_generators[(node, renewable)].loc[idx].efficiency,
-                    location=clusters_generators[(node, renewable)].loc[idx].location,
-                    unit=clusters_generators[(node, renewable)].loc[idx].unit,
+                    # location=clusters_generators[(node, renewable)].loc[idx].location,
+                    # unit=clusters_generators[(node, renewable)].loc[idx].unit,
                     p_nom_extendable=True,
                     overwrite=True,)
 
