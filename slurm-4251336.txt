@@ -1,0 +1,199 @@
+Set parameter TokenServer to value "sophia1.hpc.ait.dtu.dk"
+Config file config/config.default.yaml is extended by additional config specified via the command line.
+Config file config/plotting.default.yaml is extended by additional config specified via the command line.
+host: sn135.hpc.ait.dtu.dk
+Building DAG of jobs...
+Using shell: /usr/bin/bash
+Provided cores: 32
+Rules claiming more threads will be scaled down.
+Conda environments: ignored
+Select jobs to execute...
+Execute 1 jobs...
+
+[Mon Apr 13 20:01:59 2026]
+localrule solve_sector_network:
+    input: resources/Noridcs100_2035_modco2_ren/all/networks/base_s_100__12h_2035.nc
+    output: results/Noridcs100_2035_modco2_ren/all/networks/base_s_100__12h_2035.nc, results/Noridcs100_2035_modco2_ren/all/configs/config.base_s_100__12h_2035.yaml
+    log: results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_solver.log, results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_memory.log, results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_python.log
+    jobid: 0
+    benchmark: results/Noridcs100_2035_modco2_ren/all/benchmarks/solve_sector_network/base_s_100__12h_2035
+    reason: Forced execution
+    wildcards: clusters=100, opts=, sector_opts=12h, planning_horizons=2035
+    threads: 32
+    resources: mem_mb=128000, mem_mib=122071, disk_mb=1000, disk_mib=954, tmpdir=/tmp, runtime=2880
+Set parameter TokenServer to value "sophia1.hpc.ait.dtu.dk"
+INFO:pypsa.network.io:New version 1.1.2 available! (Current: 1.0.6)
+WARNING:pypsa.consistency:The following links have buses which are not defined:
+Index(['DE0 0 H2 Electrolysis cluster', 'DE0 0 methanolisation cluster',
+       'DE0 0 methanol cluster', 'DE0 1 H2 Electrolysis cluster',
+       'DE0 1 methanolisation cluster', 'DE0 1 methanol cluster',
+       'DE0 10 H2 Electrolysis cluster', 'DE0 10 methanolisation cluster',
+       'DE0 10 methanol cluster', 'DE0 11 H2 Electrolysis cluster',
+       ...
+       'SE1 5 battery charger cluster', 'SE1 5 battery discharger cluster',
+       'SE1 6 battery charger cluster', 'SE1 6 battery discharger cluster',
+       'SE1 7 battery charger cluster', 'SE1 7 battery discharger cluster',
+       'SE1 8 battery charger cluster', 'SE1 8 battery discharger cluster',
+       'SE1 9 battery charger cluster', 'SE1 9 battery discharger cluster'],
+      dtype='object', name='name', length=500)
+WARNING:pypsa.consistency:The following links have buses which are not defined:
+Index(['DE0 0 H2 Electrolysis cluster', 'DE0 0 methanolisation cluster',
+       'DE0 1 H2 Electrolysis cluster', 'DE0 1 methanolisation cluster',
+       'DE0 10 H2 Electrolysis cluster', 'DE0 10 methanolisation cluster',
+       'DE0 11 H2 Electrolysis cluster', 'DE0 11 methanolisation cluster',
+       'DE0 12 H2 Electrolysis cluster', 'DE0 12 methanolisation cluster',
+       ...
+       'SE1 5 battery charger cluster', 'SE1 5 battery discharger cluster',
+       'SE1 6 battery charger cluster', 'SE1 6 battery discharger cluster',
+       'SE1 7 battery charger cluster', 'SE1 7 battery discharger cluster',
+       'SE1 8 battery charger cluster', 'SE1 8 battery discharger cluster',
+       'SE1 9 battery charger cluster', 'SE1 9 battery discharger cluster'],
+      dtype='object', name='name', length=400)
+WARNING:pypsa.consistency:The following links have buses which are not defined:
+Index(['DE0 0 methanolisation cluster', 'DE0 1 methanolisation cluster',
+       'DE0 10 methanolisation cluster', 'DE0 11 methanolisation cluster',
+       'DE0 12 methanolisation cluster', 'DE0 13 methanolisation cluster',
+       'DE0 14 methanolisation cluster', 'DE0 15 methanolisation cluster',
+       'DE0 16 methanolisation cluster', 'DE0 17 methanolisation cluster',
+       'DE0 18 methanolisation cluster', 'DE0 19 methanolisation cluster',
+       'DE0 2 methanolisation cluster', 'DE0 20 methanolisation cluster',
+       'DE0 21 methanolisation cluster', 'DE0 22 methanolisation cluster',
+       'DE0 23 methanolisation cluster', 'DE0 24 methanolisation cluster',
+       'DE0 25 methanolisation cluster', 'DE0 26 methanolisation cluster',
+       'DE0 27 methanolisation cluster', 'DE0 28 methanolisation cluster',
+       'DE0 29 methanolisation cluster', 'DE0 3 methanolisation cluster',
+       'DE0 30 methanolisation cluster', 'DE0 31 methanolisation cluster',
+       'DE0 32 methanolisation cluster', 'DE0 33 methanolisation cluster',
+       'DE0 34 methanolisation cluster', 'DE0 35 methanolisation cluster',
+       'DE0 36 methanolisation cluster', 'DE0 37 methanolisation cluster',
+       'DE0 38 methanolisation cluster', 'DE0 39 methanolisation cluster',
+       'DE0 4 methanolisation cluster', 'DE0 40 methanolisation cluster',
+       'DE0 5 methanolisation cluster', 'DE0 6 methanolisation cluster',
+       'DE0 7 methanolisation cluster', 'DE0 8 methanolisation cluster',
+       'DE0 9 methanolisation cluster', 'DK0 0 methanolisation cluster',
+       'DK1 0 methanolisation cluster', 'GB2 0 methanolisation cluster',
+       'GB2 1 methanolisation cluster', 'GB2 10 methanolisation cluster',
+       'GB2 11 methanolisation cluster', 'GB2 12 methanolisation cluster',
+       'GB2 13 methanolisation cluster', 'GB2 14 methanolisation cluster',
+       'GB2 15 methanolisation cluster', 'GB2 16 methanolisation cluster',
+       'GB2 17 methanolisation cluster', 'GB2 18 methanolisation cluster',
+       'GB2 19 methanolisation cluster', 'GB2 2 methanolisation cluster',
+       'GB2 20 methanolisation cluster', 'GB2 21 methanolisation cluster',
+       'GB2 22 methanolisation cluster', 'GB2 23 methanolisation cluster',
+       'GB2 24 methanolisation cluster', 'GB2 25 methanolisation cluster',
+       'GB2 3 methanolisation cluster', 'GB2 4 methanolisation cluster',
+       'GB2 5 methanolisation cluster', 'GB2 6 methanolisation cluster',
+       'GB2 7 methanolisation cluster', 'GB2 8 methanolisation cluster',
+       'GB2 9 methanolisation cluster', 'GB3 0 methanolisation cluster',
+       'NL0 0 methanolisation cluster', 'NL0 1 methanolisation cluster',
+       'NL0 2 methanolisation cluster', 'NL0 3 methanolisation cluster',
+       'NL0 4 methanolisation cluster', 'NL0 5 methanolisation cluster',
+       'NL0 6 methanolisation cluster', 'NL0 7 methanolisation cluster',
+       'NL0 8 methanolisation cluster', 'NO1 0 methanolisation cluster',
+       'NO1 1 methanolisation cluster', 'NO1 2 methanolisation cluster',
+       'NO1 3 methanolisation cluster', 'NO1 4 methanolisation cluster',
+       'NO1 5 methanolisation cluster', 'NO1 6 methanolisation cluster',
+       'NO1 7 methanolisation cluster', 'NO1 8 methanolisation cluster',
+       'NO1 9 methanolisation cluster', 'SE1 0 methanolisation cluster',
+       'SE1 1 methanolisation cluster', 'SE1 10 methanolisation cluster',
+       'SE1 2 methanolisation cluster', 'SE1 3 methanolisation cluster',
+       'SE1 4 methanolisation cluster', 'SE1 5 methanolisation cluster',
+       'SE1 6 methanolisation cluster', 'SE1 7 methanolisation cluster',
+       'SE1 8 methanolisation cluster', 'SE1 9 methanolisation cluster'],
+      dtype='object', name='name')
+WARNING:pypsa.consistency:The following stores have buses which are not defined:
+Index(['DE0 0 H2 Store cluster', 'DE0 0 battery cluster',
+       'DE0 1 H2 Store cluster', 'DE0 1 battery cluster',
+       'DE0 10 H2 Store cluster', 'DE0 10 battery cluster',
+       'DE0 11 H2 Store cluster', 'DE0 11 battery cluster',
+       'DE0 12 H2 Store cluster', 'DE0 12 battery cluster',
+       ...
+       'SE1 5 H2 Store cluster', 'SE1 5 battery cluster',
+       'SE1 6 H2 Store cluster', 'SE1 6 battery cluster',
+       'SE1 7 H2 Store cluster', 'SE1 7 battery cluster',
+       'SE1 8 H2 Store cluster', 'SE1 8 battery cluster',
+       'SE1 9 H2 Store cluster', 'SE1 9 battery cluster'],
+      dtype='object', name='name', length=200)
+INFO:pypsa.network.io:Imported network 'Unnamed Network' has buses, carriers, generators, global_constraints, lines, links, loads, storage_units, stores, sub_networks
+/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py:502: DeprecatedWarning:
+
+iterate_components is deprecated as of 1.0rc1 and will be removed in 2.0. Use `for component in n.components` instead.
+
+/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py:505: DeprecatedWarning:
+
+df is deprecated as of 1.0rc1 and will be removed in 2.0. Use `c.static` instead.
+
+/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py:506: DeprecatedWarning:
+
+df is deprecated as of 1.0rc1 and will be removed in 2.0. Use `c.static` instead.
+
+/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py:507: DeprecatedWarning:
+
+df is deprecated as of 1.0rc1 and will be removed in 2.0. Use `c.static` instead.
+
+/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py:510: DeprecatedWarning:
+
+iterate_components is deprecated as of 1.0rc1 and will be removed in 2.0. Use `for component in n.components` instead.
+
+/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py:511: DeprecatedWarning:
+
+df is deprecated as of 1.0rc1 and will be removed in 2.0. Use `c.static` instead.
+
+/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py:512: DeprecatedWarning:
+
+df is deprecated as of 1.0rc1 and will be removed in 2.0. Use `c.static` instead.
+
+/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py:513: DeprecatedWarning:
+
+df is deprecated as of 1.0rc1 and will be removed in 2.0. Use `c.static` instead.
+
+ERROR:root:Uncaught exception
+Traceback (most recent call last):
+  File "/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py", line 1430, in <module>
+    solve_network(
+  File "/work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py", line 1363, in solve_network
+    status, condition = n.optimize(**kwargs)
+                        ^^^^^^^^^^^^^^^^^^^^
+  File "/home/rofrug/miniforge3/envs/pypsa-eur/lib/python3.11/site-packages/pypsa/optimization/optimize.py", line 465, in __call__
+    n.consistency_check(strict=["unknown_buses"])
+  File "/home/rofrug/miniforge3/envs/pypsa-eur/lib/python3.11/site-packages/pypsa/consistency.py", line 802, in consistency_check
+    check_for_unknown_buses(self, c, "unknown_buses" in strict)
+  File "/home/rofrug/miniforge3/envs/pypsa-eur/lib/python3.11/site-packages/pypsa/consistency.py", line 79, in check_for_unknown_buses
+    _log_or_raise(
+  File "/home/rofrug/miniforge3/envs/pypsa-eur/lib/python3.11/site-packages/pypsa/consistency.py", line 44, in _log_or_raise
+    raise ConsistencyError(formatted_message)
+pypsa.consistency.ConsistencyError: The following links have buses which are not defined:
+Index(['DE0 0 H2 Electrolysis cluster', 'DE0 0 methanolisation cluster',
+       'DE0 0 methanol cluster', 'DE0 1 H2 Electrolysis cluster',
+       'DE0 1 methanolisation cluster', 'DE0 1 methanol cluster',
+       'DE0 10 H2 Electrolysis cluster', 'DE0 10 methanolisation cluster',
+       'DE0 10 methanol cluster', 'DE0 11 H2 Electrolysis cluster',
+       ...
+       'SE1 5 battery charger cluster', 'SE1 5 battery discharger cluster',
+       'SE1 6 battery charger cluster', 'SE1 6 battery discharger cluster',
+       'SE1 7 battery charger cluster', 'SE1 7 battery discharger cluster',
+       'SE1 8 battery charger cluster', 'SE1 8 battery discharger cluster',
+       'SE1 9 battery charger cluster', 'SE1 9 battery discharger cluster'],
+      dtype='object', name='name', length=500)
+RuleException:
+CalledProcessError in file "/work/users/rofrug/projects/pypsa-eur/rules/solve_overnight.smk", line 44:
+Command 'set -euo pipefail;  /home/rofrug/miniforge3/envs/pypsa-eur/bin/python3.11 /work/users/rofrug/projects/pypsa-eur/.snakemake/scripts/tmpnf9q21zz.solve_network.py' returned non-zero exit status 1.
+[Mon Apr 13 20:02:13 2026]
+Error in rule solve_sector_network:
+    message: None
+    jobid: 0
+    input: resources/Noridcs100_2035_modco2_ren/all/networks/base_s_100__12h_2035.nc
+    output: results/Noridcs100_2035_modco2_ren/all/networks/base_s_100__12h_2035.nc, results/Noridcs100_2035_modco2_ren/all/configs/config.base_s_100__12h_2035.yaml
+    log: results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_solver.log, results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_memory.log, results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_python.log (check log file(s) for error details)
+Shutting down, this might take some time.
+Exiting because a job execution failed. Look below for error messages
+[Mon Apr 13 20:02:13 2026]
+Error in rule solve_sector_network:
+    message: None
+    jobid: 0
+    input: resources/Noridcs100_2035_modco2_ren/all/networks/base_s_100__12h_2035.nc
+    output: results/Noridcs100_2035_modco2_ren/all/networks/base_s_100__12h_2035.nc, results/Noridcs100_2035_modco2_ren/all/configs/config.base_s_100__12h_2035.yaml
+    log: results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_solver.log, results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_memory.log, results/Noridcs100_2035_modco2_ren/all/logs/base_s_100__12h_2035_python.log (check log file(s) for error details)
+Storing output in storage.
+WorkflowError:
+At least one job did not complete successfully.

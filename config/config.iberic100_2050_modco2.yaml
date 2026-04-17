@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Iberic100_2050_modco2_co2seq2035"
+  prefix: "Iberic100_2050_modco2_ren"
   name: "all"
   scenarios:
     enable: false
@@ -684,10 +684,10 @@ sector:
     2020: 0
     2025: 0
     2030: 40
-    2035: 100
+    2035: 20
     2040: 180
     2045: 250
-    2050: 33
+    2050: 40
   co2_sequestration_cost: 30
   co2_sequestration_lifetime: 50
   co2_spatial: true
@@ -893,7 +893,7 @@ industry:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs
 costs:
-  year: 2050
+  year: 2030
   version: v0.13.3
   social_discountrate: 0.02
   fill_values:
