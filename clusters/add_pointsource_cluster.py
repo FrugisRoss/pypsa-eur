@@ -559,7 +559,7 @@ def add_cluster_storages(n, nodes_with_clusters, cluster_cost_reduction):
             )
 
         n.add("Store",
-            name=link_name + " clustef" ,
+            name=link_name + " cluster" ,
             bus=f"{node} battery cluster",
             carrier=n.stores.at[link_name, "carrier"],
             e_nom_extendable=True,
