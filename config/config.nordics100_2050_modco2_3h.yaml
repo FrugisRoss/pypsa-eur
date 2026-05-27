@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Noridcs100_2050_modco2_popweight"
+  prefix: "Noridcs100_2050_78ccslimit"
   name: "all"
   scenarios:
     enable: false
@@ -688,10 +688,10 @@ sector:
     2020: 0
     2025: 0
     2030: 40
-    2035: 30
+    2035: 35
     2040: 180
     2045: 250
-    2050: 60
+    2050: 78
   co2_sequestration_cost: 30
   co2_sequestration_lifetime: 50
   co2_spatial: true

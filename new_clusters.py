@@ -9,14 +9,15 @@ from pathlib import Path
 import pandas as pd
 
 #%%
-fn = "resources/Iberic100_2050_ccslimit/all/networks/base_s_100__12h_2050.nc"
+fn = "resources/Iberic100_2035_20ccslimit/all/networks/base_s_100__3h_2035.nc"
 n = pypsa.Network(fn)
-config = yaml.safe_load(Path("config/config.iberic100_2050_modco2_3h.yaml").read_text())
+config = yaml.safe_load(Path("config/config.iberic100_2035_modco2_3h.yaml").read_text())
 
 cluster_cost_reduction = 0
-cluster_seq = True
+cluster_seq = True                              #only for pointsource cluster
+cluster_size=50                               #only for renewables cluster
+renewables={"solar",'solar-hsat','onwind'}      #only for renewables cluster
 
-#%%
 
 nodes = n.buses.loc[
     n.buses.index.str[:2].isin(config['countries']) &
@@ -220,6 +221,8 @@ def add_links_of_pointsource_cluster(n, nodes, cluster_cost_reduction, cluster_s
             overwrite=True,
         )
 
+        
+
         n.add(
             "Link",
             name=f"{node} methanol pointsource cluster",
@@ -234,6 +237,58 @@ def add_links_of_pointsource_cluster(n, nodes, cluster_cost_reduction, cluster_s
             overwrite=True,
         )
 
+        ### Fischer-Tropsch ###
+
+        link_name = f"{node} Fischer-Tropsch"
+
+        n.add(
+            "Link",
+            name=link_name + " pointsource cluster",
+            bus0=n.links.at[link_name, "bus0"] + " pointsource cluster",
+            bus1=n.links.at[link_name, "bus1"],
+            bus2=f'{node} co2 stored industrial',
+            bus3=n.links.at[link_name, "bus3"],
+            p_nom_extendable=n.links.at[link_name, "p_nom_extendable"],
+            p_min_pu=n.links.at[link_name, "p_min_pu"],
+            carrier=n.links.at[link_name, "carrier"],
+            efficiency=n.links.at[link_name, "efficiency"],
+            efficiency2=n.links.at[link_name, "efficiency2"],
+            efficiency3=n.links.at[link_name, "efficiency3"],
+            capital_cost=n.links.at[link_name, "capital_cost"]*(1-cluster_cost_reduction),
+            marginal_cost=n.links.at[link_name, "marginal_cost"]*(1-cluster_cost_reduction),
+            lifetime=n.links.at[link_name, "lifetime"],
+            reversed=False,
+            overwrite=True,
+        )
+
+        #maybe consider adding a bus specifically for the FT fuel produced in the cluster
+
+        ### Sabatier ###
+
+        link_name = f"{node} Sabatier"
+
+        n.add(
+            "Link",
+            name=link_name + " pointsource cluster",
+            bus0=n.links.at[link_name, "bus0"] + " pointsource cluster",
+            bus1=n.links.at[link_name, "bus1"],
+            bus2=f'{node} co2 stored industrial',
+            bus3=n.links.at[link_name, "bus3"],
+            p_nom_extendable=n.links.at[link_name, "p_nom_extendable"],
+            p_min_pu=n.links.at[link_name, "p_min_pu"],
+            carrier=n.links.at[link_name, "carrier"],
+            efficiency=n.links.at[link_name, "efficiency"],
+            efficiency2=n.links.at[link_name, "efficiency2"],
+            efficiency3=n.links.at[link_name, "efficiency3"],
+            capital_cost=n.links.at[link_name, "capital_cost"]*(1-cluster_cost_reduction),
+            marginal_cost=n.links.at[link_name, "marginal_cost"]*(1-cluster_cost_reduction),
+            lifetime=n.links.at[link_name, "lifetime"],
+            reversed=False,
+            overwrite=True,
+        )
+
+        #maybe consider adding a bus specifically for the Sabatier produced in the cluster
+
         if cluster_seq==True:
 
             ###Sequestration link
@@ -244,8 +299,8 @@ def add_links_of_pointsource_cluster(n, nodes, cluster_cost_reduction, cluster_s
                 "Link",
                 name=link_name,
                 bus0=f'{node} co2 stored industrial',
-                bus1=f"{node} co2 stored",  #to try to connect it also to the co2 sequestered
-                carrier=n.buses.at[f"{node} co2 stored", "carrier"],  
+                bus1=f"{node} co2 sequestered",  #to try to connect it also to the co2 sequestered
+                carrier=n.buses.at[f"{node} co2 sequestered", "carrier"],  
                 p_nom_extendable=True,
                 efficiency=1.0,
                 capital_cost=0.000000000001,  #Costs to set
@@ -285,7 +340,7 @@ def add_links_of_pointsource_cluster(n, nodes, cluster_cost_reduction, cluster_s
             efficiency=1.0,
             capital_cost=0.0,
             marginal_cost=0.0,
-            reversed=True,
+            reversed=False,
             overwrite=True,
         )
 
@@ -385,7 +440,6 @@ def add_pointsource_cluster (n, nodes, cluster_cost_reduction, cluster_seq):
 
     return n    
 
-n=add_pointsource_cluster(n, nodes, cluster_cost_reduction, cluster_seq)
 # %%
 #RENEWABLE CLUSTER
 
@@ -470,7 +524,7 @@ def add_buses_of_renewable_cluster(n, nodes):
         
         if not n.buses.index.str.contains(f"{node} co2 stored renewable cluster").any():
 
-            #methanol bus
+            #co2 bus
             
             n.add(
                 "Bus",
@@ -553,6 +607,60 @@ def add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction):
             reversed=False,
             overwrite=True,
         )
+
+        ### Fischer-Tropsch ###
+
+        link_name = f"{node} Fischer-Tropsch"
+
+        n.add(
+            "Link",
+            name=link_name + " renewable cluster",
+            bus0=n.links.at[link_name, "bus0"] + " renewable cluster",
+            bus1=n.links.at[link_name, "bus1"],
+            bus2=f'{node} co2 stored renewable cluster',
+            bus3=n.links.at[link_name, "bus3"],
+            p_nom_extendable=n.links.at[link_name, "p_nom_extendable"],
+            p_min_pu=n.links.at[link_name, "p_min_pu"],
+            carrier=n.links.at[link_name, "carrier"],
+            efficiency=n.links.at[link_name, "efficiency"],
+            efficiency2=n.links.at[link_name, "efficiency2"],
+            efficiency3=n.links.at[link_name, "efficiency3"],
+            capital_cost=n.links.at[link_name, "capital_cost"]*(1-cluster_cost_reduction),
+            marginal_cost=n.links.at[link_name, "marginal_cost"]*(1-cluster_cost_reduction),
+            lifetime=n.links.at[link_name, "lifetime"],
+            reversed=False,
+            overwrite=True,
+        )
+
+        #maybe consider adding a bus specifically for the FT fuel produced in the cluster
+
+        ### Sabatier ###
+
+        link_name = f"{node} Sabatier"
+
+        n.add(
+            "Link",
+            name=link_name + " renewable cluster",
+            bus0=n.links.at[link_name, "bus0"] + " renewable cluster",
+            bus1=n.links.at[link_name, "bus1"],
+            bus2=f'{node} co2 stored renewable cluster',
+            bus3=n.links.at[link_name, "bus3"],
+            p_nom_extendable=n.links.at[link_name, "p_nom_extendable"],
+            p_min_pu=n.links.at[link_name, "p_min_pu"],
+            carrier=n.links.at[link_name, "carrier"],
+            efficiency=n.links.at[link_name, "efficiency"],
+            efficiency2=n.links.at[link_name, "efficiency2"],
+            efficiency3=n.links.at[link_name, "efficiency3"],
+            capital_cost=n.links.at[link_name, "capital_cost"]*(1-cluster_cost_reduction),
+            marginal_cost=n.links.at[link_name, "marginal_cost"]*(1-cluster_cost_reduction),
+            lifetime=n.links.at[link_name, "lifetime"],
+            reversed=False,
+            overwrite=True,
+        )
+
+        #maybe consider adding a bus specifically for the Sabatier produced in the cluster
+
+        ### DAC ###
 
         link_name = f"{node} urban central DAC" #I chose urban central because we also connect the methanol plant to the urban central DH. Can be modified.
 
@@ -664,11 +772,6 @@ def add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction):
     return n
 
 
-# %%
-
-cluster_size=1000   
-renewables={"solar",'solar-hsat','onwind'}
-
 def add_generators_of_renewable_cluster(n, cluster_size, cluster_cost_reduction, renewables, nodes_with_clusters):
     
     nodes_renewables_cf = {}                #dictionary of dataframes by node and renewable type, sorting the generators by average capacity factor (descending order)
@@ -750,14 +853,25 @@ def add_generators_of_renewable_cluster(n, cluster_size, cluster_cost_reduction,
 
                 
                 
-                n.generators_t['p_max_pu'][clusters_generators[(node, renewable)].loc[idx].name + " cluster"] = n.generators_t['p_max_pu'][clusters_generators[(node, renewable)].loc[idx].name]
+                n.generators_t['p_max_pu'][clusters_generators[(node, renewable)].loc[idx].name + " renewable cluster"] = n.generators_t['p_max_pu'][clusters_generators[(node, renewable)].loc[idx].name]
+
+                # if idx == nodes_renewables_cf[(node, renewable)].iloc[number_gen].name:
+                #     n.generators.loc[n.generators.index == idx, "p_nom_max"] =n.generators.loc[n.generators.index == idx, "p_nom_min"]+remaining_avail_capacity
+
+                #     #print(f"Residual capacity of generator {clusters_generators[(node, renewable)].loc[idx].name} is {n.generators.loc[n.generators.index == idx, 'p_nom_max']} MW")
+                
+                # else:
+
+
+                #     n.remove(
+                #             "Generator",
+                #             name=clusters_generators[(node, renewable)].loc[idx].name,
+                #     )
 
     return n
 
 #%%
 
-cluster_size=1000   
-renewables={"solar",'solar-hsat','onwind'}
 
 # %%
 
@@ -772,8 +886,25 @@ def add_renewable_cluster(n, nodes, cluster_size, cluster_cost_reduction, renewa
 
     return n
 
-n=add_renewable_cluster(n, nodes_renewable_cluster, cluster_size, cluster_cost_reduction, renewables, nodes_renewable_cluster)
 
 # %%
 
 #add line to save the network
+
+n=add_pointsource_cluster(n, nodes, cluster_cost_reduction, cluster_seq)
+
+n=add_renewable_cluster(n, nodes_renewable_cluster, cluster_size, cluster_cost_reduction, renewables, nodes_renewable_cluster)
+
+
+
+#%%
+n.links.loc[n.links.index.str.contains('Sabatier')]
+
+#%%
+n.links.loc[n.links.index.str.contains('Fischer-Tropsch')]
+#%%
+n.links.loc[n.links.index.str.contains('methanolisation')]
+
+#%%
+n.export_to_netcdf(fn)
+# %%

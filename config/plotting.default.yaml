@@ -5,8 +5,8 @@
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#plotting
 plotting:
   map:
-    boundaries: [-11,13, 35,55] #iberic
-    #boundaries: [-10,30, 45,75] #nordic
+    boundaries: [-18,20, 30,57] #iberic
+    #boundaries: [-10,28, 46,73] #nordic
     geomap_colors:
       ocean: white
       land: white
@@ -166,8 +166,8 @@ plotting:
       branch_factor: 1
       flow_factor: 2_000
       bus_sizes:
-      - 50
-      - 10
+      - 20
+      - 5
       branch_sizes:
       - 5
       - 2

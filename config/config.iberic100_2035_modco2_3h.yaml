@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Iberic100_2035_ccslimit"
+  prefix: "Iberic100_2035_20ccslimit"
   name: "all"
   scenarios:
     enable: false
@@ -684,10 +684,10 @@ sector:
     2020: 0
     2025: 0
     2030: 40
-    2035: 7
+    2035: 20
     2040: 180
     2045: 250
-    2050: 16
+    2050: 55
   co2_sequestration_cost: 30
   co2_sequestration_lifetime: 50
   co2_spatial: true
