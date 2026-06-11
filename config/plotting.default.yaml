@@ -5,7 +5,8 @@
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#plotting
 plotting:
   map:
-    boundaries: [-18,20, 30,57] #iberic
+    boundaries: [-15,12, 35,48] #iberic    
+    #boundaries: [-12,8, 35,48] #iberic
     #boundaries: [-10,28, 46,73] #nordic
     geomap_colors:
       ocean: white
@@ -159,9 +160,9 @@ plotting:
       unit: Mt
       unit_conversion: 1_000_000
       cmap: Purples
-      vmin:
-      vmax:
-      region_unit: €/t_${CO_2}$
+      vmin: 0
+      vmax: 200
+      region_unit: €/tonCO2
       bus_factor: 0.03
       branch_factor: 1
       flow_factor: 2_000
