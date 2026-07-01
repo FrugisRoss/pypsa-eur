@@ -9,15 +9,14 @@ from pathlib import Path
 import pandas as pd
 
 #%%
-fn = "resources/Iberic100_2035_10ccslimit_noFR/all/networks/base_s_100__3h_2035.nc"
+fn = "resources/Noridcs100_2035_35ccslimit/all/networks/base_s_100__3h_2035.nc"
 n = pypsa.Network(fn)
-config = yaml.safe_load(Path("config/config.iberic100_2035_modco2_3h.yaml").read_text())
+config = yaml.safe_load(Path("config/config.nordics100_2035_modco2_3h.yaml").read_text())
 
-point_cluster_cost_reduction = 0
-ren_cluster_cost_reduction = 0
+ren_cluster_cost_reduction = 0.5
 
 cluster_seq = True                              #only for pointsource cluster
-cluster_size=50                               #only for renewables cluster
+cluster_size=1000                             #only for renewables cluster
 renewables={"solar",'solar-hsat','onwind'}      #only for renewables cluster
 
 
@@ -169,14 +168,12 @@ def add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction):
             bus1=cluster_methanol_bus_name,
             bus2=n.links.at[link_name, "bus2"] + " renewable cluster",
             bus3=f"{node} co2 stored renewable cluster",
-            bus4=n.links.at[link_name, "bus4"],
             p_nom_extendable=n.links.at[link_name, "p_nom_extendable"],
             p_min_pu=n.links.at[link_name, "p_min_pu"],
             carrier=n.links.at[link_name, "carrier"],
             efficiency=n.links.at[link_name, "efficiency"],
             efficiency2=n.links.at[link_name, "efficiency2"],
             efficiency3=n.links.at[link_name, "efficiency3"],
-            efficiency4=n.links.at[link_name, "efficiency4"],
             capital_cost=n.links.at[link_name, "capital_cost"],
             marginal_cost=n.links.at[link_name, "marginal_cost"],
             lifetime=n.links.at[link_name, "lifetime"],
@@ -208,13 +205,11 @@ def add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction):
             bus0=n.links.at[link_name, "bus0"] + " renewable cluster",
             bus1=n.links.at[link_name, "bus1"],
             bus2=f'{node} co2 stored renewable cluster',
-            bus3=n.links.at[link_name, "bus3"],
             p_nom_extendable=n.links.at[link_name, "p_nom_extendable"],
             p_min_pu=n.links.at[link_name, "p_min_pu"],
             carrier=n.links.at[link_name, "carrier"],
             efficiency=n.links.at[link_name, "efficiency"],
             efficiency2=n.links.at[link_name, "efficiency2"],
-            efficiency3=n.links.at[link_name, "efficiency3"],
             capital_cost=n.links.at[link_name, "capital_cost"],
             marginal_cost=n.links.at[link_name, "marginal_cost"],
             lifetime=n.links.at[link_name, "lifetime"],
@@ -224,35 +219,10 @@ def add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction):
 
         #maybe consider adding a bus specifically for the FT fuel produced in the cluster
 
-        ### Sabatier ###
-
-        link_name = f"{node} Sabatier"
-
-        n.add(
-            "Link",
-            name=link_name + " renewable cluster",
-            bus0=n.links.at[link_name, "bus0"] + " renewable cluster",
-            bus1=n.links.at[link_name, "bus1"],
-            bus2=f'{node} co2 stored renewable cluster',
-            bus3=n.links.at[link_name, "bus3"],
-            p_nom_extendable=n.links.at[link_name, "p_nom_extendable"],
-            p_min_pu=n.links.at[link_name, "p_min_pu"],
-            carrier=n.links.at[link_name, "carrier"],
-            efficiency=n.links.at[link_name, "efficiency"],
-            efficiency2=n.links.at[link_name, "efficiency2"],
-            efficiency3=n.links.at[link_name, "efficiency3"],
-            capital_cost=n.links.at[link_name, "capital_cost"],
-            marginal_cost=n.links.at[link_name, "marginal_cost"],
-            lifetime=n.links.at[link_name, "lifetime"],
-            reversed=False,
-            overwrite=True,
-        )
-
-        #maybe consider adding a bus specifically for the Sabatier produced in the cluster
 
         ### DAC ###
 
-        link_name = f"{node} urban central DAC" #I chose urban central because we also connect the methanol plant to the urban central DH. Can be modified.
+        link_name = f"{node} urban decentral DAC" #I chose urban central because we also connect the methanol plant to the urban central DH. Can be modified.
 
         n.add(
             "Link",
@@ -296,49 +266,59 @@ def add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction):
                 e_initial_per_period=n.stores.at[link_name, "e_initial_per_period"],
                 e_cyclic=n.stores.at[link_name, "e_cyclic"],
                 e_cyclic_per_period=n.stores.at[link_name, "e_cyclic_per_period"],
+                lifetime=n.stores.at[link_name, "lifetime"],
                 overwrite=True,
                 )
             
-            link_name = f"{node} battery"
+            link_name = f"{node} battery charger"
 
 
             n.add(
                     "Link",
-                    name=link_name + " charger renewable cluster",
-                    bus0=f"{node} renewable cluster",
-                    bus1=f"{node} battery renewable cluster",
-                    carrier=n.buses.at[link_name, "carrier"],   
+                    name=link_name + " renewable cluster",
+                    bus0=n.links.at[link_name, "bus0"] + " renewable cluster",
+                    bus1=n.links.at[link_name, "bus1"] + " renewable cluster",
+                    carrier=n.links.at[link_name, "carrier"],   
                     p_nom_extendable=True,
-                    efficiency=1.0,
-                    capital_cost=0.0,
-                    marginal_cost=0.0,
+                    efficiency=n.links.at[link_name, "efficiency"],
+                    capital_cost=n.links.at[link_name, "capital_cost"]*(1-cluster_cost_reduction),
+                    marginal_cost=n.links.at[link_name, "marginal_cost"],
+                    lifetime=n.links.at[link_name, "lifetime"],
                     reversed=False,
                     overwrite=True,
                 )
+
+            link_name = f"{node} battery discharger"
+
             n.add(
                     "Link",
-                    name=link_name + " discharger renewable cluster",
-                    bus0=f"{node} battery renewable cluster",
-                    bus1=f"{node} renewable cluster",
-                    carrier=n.buses.at[link_name, "carrier"],
+                    name=link_name + " renewable cluster",
+                    bus0=n.links.at[link_name, "bus0"] + " renewable cluster",
+                    bus1=n.links.at[link_name, "bus1"] + " renewable cluster",
+                    carrier=n.links.at[link_name, "carrier"],
                     p_nom_extendable=True,
-                    efficiency=1.0,
-                    capital_cost=0.0,
-                    marginal_cost=0.0,
+                    efficiency=n.links.at[link_name, "efficiency"],
+                    capital_cost=n.links.at[link_name, "capital_cost"],
+                    marginal_cost=n.links.at[link_name, "marginal_cost"],
+                    lifetime=n.links.at[link_name, "lifetime"],
                     reversed=True,
                     overwrite=True,
                 )
 
-            n.add("Store",
+            link_name = f"{node} battery"
+
+            n.add(
+                "Store",
                 name=link_name + " renewable cluster" ,
-                bus=f"{node} battery renewable cluster",
+                bus=n.stores.at[link_name, "bus"] + " renewable cluster",
                 carrier=n.stores.at[link_name, "carrier"],
                 e_nom_extendable=True,
                 capital_cost=n.stores.at[link_name, "capital_cost"]*(1-cluster_cost_reduction),
-                marginal_cost=n.stores.at[link_name, "marginal_cost"]*(1-cluster_cost_reduction),
+                marginal_cost=n.stores.at[link_name, "marginal_cost"],
                 e_initial_per_period=n.stores.at[link_name, "e_initial_per_period"],
                 e_cyclic=n.stores.at[link_name, "e_cyclic"],
                 e_cyclic_per_period=n.stores.at[link_name, "e_cyclic_per_period"],
+                lifetime=n.stores.at[link_name, "lifetime"],
                 overwrite=True,
                 )
 
@@ -351,8 +331,7 @@ def add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction):
                 e_nom_extendable=True,
                 capital_cost=n.stores.at[link_name, "capital_cost"],
                 marginal_cost=n.stores.at[link_name, "marginal_cost"],
-                #capital_cost=0.00001,
-                #marginal_cost=0.00001,
+                lifetime=n.stores.at[link_name, "lifetime"],
                 e_initial_per_period=n.stores.at[link_name, "e_initial_per_period"],
                 e_cyclic=n.stores.at[link_name, "e_cyclic"],
                 e_cyclic_per_period=n.stores.at[link_name, "e_cyclic_per_period"],
@@ -434,9 +413,10 @@ def add_generators_of_renewable_cluster(n, cluster_size, cluster_cost_reduction,
                     carrier=clusters_generators[(node, renewable)].loc[idx].carrier,
                     p_nom_max=p_nom_avail,
                     p_max_pu=clusters_generators[(node, renewable)].loc[idx].p_max_pu,
-                    marginal_cost=clusters_generators[(node, renewable)].loc[idx].marginal_cost*(1-cluster_cost_reduction),
+                    marginal_cost=clusters_generators[(node, renewable)].loc[idx].marginal_cost,
                     capital_cost=clusters_generators[(node, renewable)].loc[idx].capital_cost*(1-cluster_cost_reduction),
                     efficiency=clusters_generators[(node, renewable)].loc[idx].efficiency,
+                    lifetime=clusters_generators[(node, renewable)].loc[idx].lifetime,
                     p_nom_extendable=True,
                     overwrite=True,)
 
@@ -445,18 +425,7 @@ def add_generators_of_renewable_cluster(n, cluster_size, cluster_cost_reduction,
                 
                 n.generators_t['p_max_pu'][clusters_generators[(node, renewable)].loc[idx].name + " renewable cluster"] = n.generators_t['p_max_pu'][clusters_generators[(node, renewable)].loc[idx].name]
 
-                # if idx == nodes_renewables_cf[(node, renewable)].iloc[number_gen].name:
-                #     n.generators.loc[n.generators.index == idx, "p_nom_max"] =n.generators.loc[n.generators.index == idx, "p_nom_min"]+remaining_avail_capacity
 
-                #     #print(f"Residual capacity of generator {clusters_generators[(node, renewable)].loc[idx].name} is {n.generators.loc[n.generators.index == idx, 'p_nom_max']} MW")
-                
-                # else:
-
-
-                #     n.remove(
-                #             "Generator",
-                #             name=clusters_generators[(node, renewable)].loc[idx].name,
-                #     )
 
     return n
 
@@ -493,6 +462,10 @@ n.links.loc[n.links.index.str.contains('Fischer-Tropsch')]
 #%%
 n.links.loc[n.links.index.str.contains('methanolisation')]
 
+
+#%%
+
+n.generators.loc[n.generators.index.str.contains(r'solar renewable cluster')]
 #%%
 n.export_to_netcdf(fn)
 # %%
