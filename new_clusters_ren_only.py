@@ -9,9 +9,9 @@ from pathlib import Path
 import pandas as pd
 
 #%%
-fn = "resources/Noridcs100_2035_35ccslimit/all/networks/base_s_100__3h_2035.nc"
+fn = "resources/Iberic100_2035_10ccslimit_noFR_40nodes/all/networks/base_s_40__3h_2035.nc"
 n = pypsa.Network(fn)
-config = yaml.safe_load(Path("config/config.nordics100_2035_modco2_3h.yaml").read_text())
+config = yaml.safe_load(Path("config/config.iberic100_2035_modco2_3h_noFR.yaml").read_text())
 
 ren_cluster_cost_reduction = 0.5
 
@@ -24,8 +24,6 @@ nodes = n.buses.loc[
     n.buses.index.str[:2].isin(config['countries']) &
     (n.buses['carrier'] == 'AC')
 ].index.tolist()
-
-nodes_renewable_cluster = [node for node in nodes if f"{node} urban central heat" in n.buses.index]
 
 
 
@@ -450,7 +448,7 @@ def add_renewable_cluster(n, nodes, cluster_size, cluster_cost_reduction, renewa
 
 #add line to save the network
 
-n=add_renewable_cluster(n, nodes_renewable_cluster, cluster_size, ren_cluster_cost_reduction, renewables, nodes_renewable_cluster)
+n=add_renewable_cluster(n, nodes, cluster_size, ren_cluster_cost_reduction, renewables, nodes)
 
 
 
