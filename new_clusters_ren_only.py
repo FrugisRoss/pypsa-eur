@@ -9,9 +9,9 @@ from pathlib import Path
 import pandas as pd
 
 #%%
-fn = "resources/Iberic100_2035_10ccslimit_noFR_40nodes/all/networks/base_s_40__3h_2035.nc"
+fn = "resources/Noridcs100_2035_35ccslimit_modCO2budgCLUSTER/all/networks/base_s_100__3h_2035.nc"
 n = pypsa.Network(fn)
-config = yaml.safe_load(Path("config/config.iberic100_2035_modco2_3h_noFR.yaml").read_text())
+config = yaml.safe_load(Path("config/config.nordics100_2035_modco2_3h_modCO2budg.yaml").read_text())
 
 ren_cluster_cost_reduction = 0.5
 

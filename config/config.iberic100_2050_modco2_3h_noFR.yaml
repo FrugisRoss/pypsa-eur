@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Iberic100_2050_30ccslimit_noFR"
+  prefix: "Iberic100_2050_30ccslimit_noFR_40nodes"
   name: "all"
   scenarios:
     enable: false
@@ -35,7 +35,7 @@ foresight: overnight
 # Wildcard docs in https://pypsa-eur.readthedocs.io/en/latest/wildcards.html
 scenario:
   clusters:
-  - 100
+  - 40
   opts:
   - ''
   sector_opts:

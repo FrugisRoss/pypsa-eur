@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Iberic100_2035_10ccslimit_noFR_40nodes"
+  prefix: "Iberic100_2035_10ccslimit_noFR_24h"
   name: "all"
   scenarios:
     enable: false
@@ -39,7 +39,7 @@ scenario:
   opts:
   - ''
   sector_opts:
-  - '3h'
+  - '24h'
   planning_horizons:
   - '2035'
   
@@ -985,9 +985,10 @@ solving:
         H2 pipeline: 0.3
         gas pipeline: 0.3
       fractional_last_unit_size: false
-    keep_files: false
+    keep_files: true
     model_kwargs:
       solver_dir: "/scratch"
+    NodefileStart: 1
 
   agg_p_nom_limits:
     agg_offwind: false

@@ -190,7 +190,6 @@ def add_co2_stored_links(n, nodes, ):
             efficiency=1,
             p_nom_extendable=True,
             p_nom_min=0,
-            p_nom_max=1e6,
             capital_cost=0,
             marginal_cost=0,
             p_min_pu=0,
@@ -208,7 +207,6 @@ def add_co2_stored_links(n, nodes, ):
             efficiency=1,
             p_nom_extendable=True,
             p_nom_min=0,
-            p_nom_max=1e6,
             capital_cost=0,
             marginal_cost=0,
             p_min_pu=0,
@@ -222,6 +220,32 @@ def add_co2_stored_links(n, nodes, ):
 
 n=add_co2_stored_links(n, nodes)
 
+def add_co2_storage_on_sequestered_bus(n, nodes):
+
+    '''Adds a storage on the co2 sequestered bus,
+        takes the network and the series of links as an input'''
+
+    
+    for node in nodes:
+
+        n.add(
+            'Store',
+            name=f"{node} co2 stored sequestered",
+            bus=f"{node} co2 sequestered",
+            carrier=n.stores.loc[f"{node} co2 stored", "carrier"],
+            e_nom_extendable=True,
+            e_initial_per_period=False,
+            e_cyclic=True,
+            sign=n.stores.loc[f"{node} co2 stored", "sign"],
+            capital_cost=n.stores.loc[f"{node} co2 stored", "capital_cost"],
+            marginal_cost=n.stores.loc[f"{node} co2 stored", "marginal_cost"],
+            standing_loss=n.stores.loc[f"{node} co2 stored", "standing_loss"]
+            
+        )
+    
+    return n
+
+n=add_co2_storage_on_sequestered_bus(n, nodes)
 #%%
 
 n.export_to_netcdf(fn)
