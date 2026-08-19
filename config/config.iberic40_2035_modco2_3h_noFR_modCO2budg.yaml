@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Iberic40_2035_10ccslimit_modCO2budgCLUSTER"
+  prefix: "Iberic40_2035_10ccslimit_modCO2budgMETshare"
   name: "all"
   scenarios:
     enable: false
@@ -127,7 +127,7 @@ electricity:
     enable: false
     by_country: false
 
-  transmission_limit: v1.25
+  transmission_limit: v1.0
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#atlite
 atlite:
@@ -604,7 +604,7 @@ sector:
     2020: 0
     2025: 0
     2030: 0.15
-    2035: 0.35
+    2035: 0.25
     2040: 0.55
     2045: 0.8
     2050: 1
@@ -612,7 +612,7 @@ sector:
     2020: 1
     2025: 1
     2030: 0.85
-    2035: 0.65
+    2035: 0.75
     2040: 0.45
     2045: 0.2
     2050: 0

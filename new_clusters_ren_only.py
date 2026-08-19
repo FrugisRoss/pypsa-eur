@@ -9,13 +9,14 @@ from pathlib import Path
 import pandas as pd
 
 #%%
-fn = "resources/Noridcs100_2035_35ccslimit_modCO2budgCLUSTER/all/networks/base_s_100__3h_2035.nc"
+fn = "resources/Iberic40_2035_10ccslimit_CLUSTERconnected/all/networks/base_s_40__3h_2035.nc"
 n = pypsa.Network(fn)
-config = yaml.safe_load(Path("config/config.nordics100_2035_modco2_3h_modCO2budg.yaml").read_text())
+config = yaml.safe_load(Path("config/config.iberic40_2035_modco2_3h_noFR_modCO2budgCLUSTER.yaml").read_text())
 
 ren_cluster_cost_reduction = 0.5
+ren_cluster_grid_connection = 1
 
-cluster_seq = True                              #only for pointsource cluster
+ongrid = True                              #only for renewable cluster
 cluster_size=1000                             #only for renewables cluster
 renewables={"solar",'solar-hsat','onwind'}      #only for renewables cluster
 
@@ -131,7 +132,7 @@ def add_buses_of_renewable_cluster(n, nodes):
     return n
 
 
-def add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction):
+def add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction,ongrid,ren_cluster_grid_connection,cluster_size):
 
     for node in nodes:
 
@@ -244,6 +245,43 @@ def add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction):
             overwrite=True,
         )
 
+        if ongrid==True :
+
+            ### Electricity connection to grid ###
+
+            link_name = f"{node} electricity renewable cluster"
+            
+            n.add(
+                "Link",
+                name=link_name,
+                bus0=f"{node} renewable cluster",
+                bus1=f"{node}",
+                carrier=n.buses.at[f"{node}", "carrier"],  
+                p_nom_extendable=True,
+                p_nom_max=ren_cluster_grid_connection*cluster_size,
+                efficiency=1.0,
+                capital_cost=0.0,
+                marginal_cost=0.0,
+                reversed=False,
+                overwrite=True,
+            )
+
+            link_name = f"{node} electricity renewable cluster back"
+            n.add(
+                "Link",
+                name=link_name,
+                bus0=f"{node}",
+                bus1=f"{node} renewable cluster",
+                carrier=n.buses.at[f"{node}", "carrier"],  
+                p_nom_extendable=True,
+                p_nom_max=ren_cluster_grid_connection*cluster_size,
+                efficiency=1.0,
+                capital_cost=0.0,
+                marginal_cost=0.0,
+                reversed=True,
+                overwrite=True,
+            )
+
     return n
 
 
@@ -335,6 +373,8 @@ def add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction):
                 e_cyclic_per_period=n.stores.at[link_name, "e_cyclic_per_period"],
                 overwrite=True,
                 )
+
+            
 
     return n
 
@@ -432,12 +472,12 @@ def add_generators_of_renewable_cluster(n, cluster_size, cluster_cost_reduction,
 
 # %%
 
-def add_renewable_cluster(n, nodes, cluster_size, cluster_cost_reduction, renewables, nodes_with_clusters):
+def add_renewable_cluster(n, nodes, cluster_size, cluster_cost_reduction, renewables, nodes_with_clusters, ongrid, ren_cluster_grid_connection):
 
 #all good here but we need to understand how to handle the case where there are not enough renewable generators available at a node to reach the cluster size.
 #in that case we should remove  the 'insufficient' nodes from nodes_with_clusters
     n=add_buses_of_renewable_cluster(n, nodes)
-    n=add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction)
+    n=add_links_of_renewable_cluster(n, nodes, cluster_cost_reduction,ongrid,ren_cluster_grid_connection,cluster_size)
     n=add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction)
     n=add_generators_of_renewable_cluster(n, cluster_size, cluster_cost_reduction, renewables, nodes_with_clusters)
 
@@ -448,22 +488,13 @@ def add_renewable_cluster(n, nodes, cluster_size, cluster_cost_reduction, renewa
 
 #add line to save the network
 
-n=add_renewable_cluster(n, nodes, cluster_size, ren_cluster_cost_reduction, renewables, nodes)
+n=add_renewable_cluster(n, nodes, cluster_size, ren_cluster_cost_reduction, renewables, nodes, ongrid, ren_cluster_grid_connection)
 
 
 
 #%%
-n.links.loc[n.links.index.str.contains('Sabatier')]
+n.links.loc[n.links.index.str.contains('electricity renewable cluster')]
 
-#%%
-n.links.loc[n.links.index.str.contains('Fischer-Tropsch')]
-#%%
-n.links.loc[n.links.index.str.contains('methanolisation')]
-
-
-#%%
-
-n.generators.loc[n.generators.index.str.contains(r'solar renewable cluster')]
 #%%
 n.export_to_netcdf(fn)
 # %%

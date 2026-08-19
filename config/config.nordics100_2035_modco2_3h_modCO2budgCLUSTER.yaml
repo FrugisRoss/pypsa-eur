@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Noridcs100_2035_35ccslimit_modCO2budgMETshare"
+  prefix: "Noridcs100_2035_35ccslimit_CLUSTERconnected"
   name: "all"
   scenarios:
     enable: false
