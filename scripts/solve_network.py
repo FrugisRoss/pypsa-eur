@@ -187,6 +187,58 @@ def add_land_use_constraint(n: pypsa.Network, planning_horizons: str) -> None:
     n.generators["p_nom_max"] = n.generators["p_nom_max"].clip(lower=0)
 
 
+def add_cluster_renewables_potential_constraint(n: pypsa.Network, config: dict) -> None:
+    """
+    Add constraint to make sure the capacity of all solar technologies (fixed, tracking, ets. ) and onshore wind in the cluster is subject to the 
+    constraint on the solar and onshore wind maximum potential of the node.
+    Example:
+    ES1 0: total solar potential is 10 GW
+    ES1 0: total onshore wind potential is 20 GW
+    The constraint ensures that:
+        solar_p_nom + solar_cluster_p_nom <= 10 GW
+        onshore_wind_p_nom + onshore_wind_cluster_p_nom <= 20 GW
+    """
+    rename = {} if PYPSA_V1 else {"Generator-ext": "Generator"}
+
+    for carrier in ["solar", "solar-hsat", "onwind"]:
+        gen_cluster = n.generators[
+            (n.generators.carrier == f"{carrier}") & (n.generators.index.str.contains('renewable cluster')) & n.generators.p_nom_extendable
+        ].index
+
+        gen_outside_cluster = n.generators[
+            (n.generators.carrier == carrier) & n.generators.p_nom_extendable & ~(n.generators.index.str.contains('renewable cluster'))
+        ].index
+
+        if gen_cluster.empty:
+            continue
+
+        location = pd.Series(n.buses.location, index=n.buses.index)
+        ggrouper_cluster = n.generators.loc[gen_cluster].bus.map(location)
+        ggrouper_outside = n.generators.loc[gen_outside_cluster].bus.map(location)
+
+        rhs = (
+            n.generators.loc[gen_outside_cluster, "p_nom_max"]
+            .groupby(ggrouper_outside)
+            .max()
+        ).clip(lower=0)
+
+        logger.info(f"rhs: {rhs}")
+
+        lhs = (
+            ((n.model["Generator-p_nom"].rename(rename).loc[gen_cluster])
+            .groupby(ggrouper_cluster)
+            .sum())
+            + ((n.model["Generator-p_nom"].rename(rename).loc[gen_outside_cluster])
+            .groupby(ggrouper_outside)
+            .sum())
+        )
+
+        logger.info(f"lhs: {lhs}")
+
+        logger.info(f"Adding {carrier} potential constraint for clusters.")
+        n.model.add_constraints(lhs <= rhs, name=f"{carrier}_potential_cluster")
+
+        
 def add_solar_potential_constraints(n: pypsa.Network, config: dict) -> None:
     """
     Add constraint to make sure the sum capacity of all solar technologies (fixed, tracking, ets. ) is below the region potential.
@@ -243,6 +295,9 @@ def add_solar_potential_constraints(n: pypsa.Network, config: dict) -> None:
 
     logger.info("Adding solar potential constraint.")
     n.model.add_constraints(lhs <= rhs, name="solar_potential")
+
+
+
 
 
 def add_co2_sequestration_limit(
@@ -1201,6 +1256,8 @@ def extra_functionality(
 
     if EQ_o := constraints["EQ"]:
         add_EQ_constraints(n, EQ_o.replace("EQ", ""))
+
+    add_cluster_renewables_potential_constraint(n, config)
 
     if {"solar-hsat", "solar"}.issubset(
         config["electricity"]["renewable_carriers"]

@@ -16,11 +16,11 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Iberic100_2035_10ccslimit_noFR_40nodes"
-  name: "all"
+  prefix: "test-EU-2035"
+  name: ""
   scenarios:
     enable: false
-    file: config/scenarios.costs.yaml
+    file: config/scenarios.yaml
   disable_progressbar: false
   shared_resources:
     policy: false
@@ -35,24 +35,50 @@ foresight: overnight
 # Wildcard docs in https://pypsa-eur.readthedocs.io/en/latest/wildcards.html
 scenario:
   clusters:
-  - 40
+  - 50
   opts:
   - ''
   sector_opts:
-  - '3h'
+  - ''
   planning_horizons:
-  - '2035'
-  
+  - 2035
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#countries
 countries:
-
+- AL
+- AT
+- BA
+- BE
+- BG
+- CH
+- CZ
+- DE
+- DK
+- EE
 - ES
+- FI
+- FR
+- GB
+- GR
+- HR
+- HU
+- IE
+- IT
+- LT
+- LU
+- LV
+- ME
+- MK
+- NL
+- 'NO'
+- PL
 - PT
-
-
-
-
+- RO
+- RS
+- SE
+- SI
+- SK
+- XK
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#snapshots
 snapshots:
@@ -74,7 +100,7 @@ co2_budget:
   2020: 0.720 # average emissions of 2019 to 2021 relative to 1990, CO2 excl LULUCF, EEA data, European Environment Agency. (2023a). Annual European Union greenhouse gas inventory 1990–2021 and inventory report 2023 - CRF Table. https://unfccc.int/documents/627830
   2025: 0.648 # With additional measures (WAM) projection, CO2 excl LULUCF, European Environment Agency. (2023e). Member States’ greenhouse gas (GHG) emission projections 2023. https://www.eea.europa.eu/en/datahub/datahubitem-view/4b8d94a4-aed7-4e67-a54c-0623a50f48e8
   2030: 0.450 # 55% reduction by 2030 (Ff55)
-  2035: 0.250
+  2035: 0.35
   2040: 0.100 # 90% by 2040
   2045: 0.050
   2050: 0.000 # climate-neutral by 2050
@@ -127,7 +153,7 @@ electricity:
     enable: false
     by_country: false
 
-  transmission_limit: v1.25
+  transmission_limit: v1.10
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#atlite
 atlite:
@@ -507,6 +533,7 @@ sector:
       aquifer_volumetric_heat_capacity: 2600
       fraction_of_aquifer_area_available: 0.2
       effective_screen_length: 20
+      dh_area_buffer: 1000
       capex_as_fraction_of_geothermal_heat_source: 0.75
       recovery_factor: 0.6
       marginal_cost_charger: 0.035
@@ -522,15 +549,10 @@ sector:
       geothermal:
         constant_temperature_celsius: 65
         ignore_missing_regions: false
-      river_water:
-        constant_temperature_celsius: false
     direct_utilisation_heat_sources:
     - geothermal
     temperature_limited_stores:
     - ptes
-    dh_areas:
-      buffer: 1000
-      handle_missing_countries: fill
   heat_pump_sources:
     urban central:
     - air
@@ -647,6 +669,7 @@ sector:
     decentral: 1.1  #to cover demand peaks bigger than data
     central: 1.0
   chp:
+    enable: true
     fuel:
     - solid biomass # For solid biomass, CHP with and without CC are added
     - gas # For all other fuels the same techno economic data from gas CHP is taken
@@ -684,14 +707,14 @@ sector:
     2020: 0
     2025: 0
     2030: 40
-    2035: 10
+    2035: 100
     2040: 180
     2045: 250
-    2050: 30
+    2050: 250
   co2_sequestration_cost: 30
   co2_sequestration_lifetime: 50
   co2_spatial: true
-  co2_network: false
+  co2_network: true
   co2_network_cost_factor: 1
   cc_fraction: 0.9
   hydrogen_underground_storage: true
@@ -712,7 +735,6 @@ sector:
     biomass_to_methanol: true
     biomass_to_methanol_cc: false
   ammonia: true
-  min_part_load_electrolysis: 0
   min_part_load_fischer_tropsch: 0.5
   min_part_load_methanolisation: 0.3
   min_part_load_methanation: 0.3
@@ -742,7 +764,7 @@ sector:
       compression_per_1000km: 0.01
     electricity distribution grid:
       efficiency_static: 0.97
-  H2_network: false
+  H2_network: true
   gas_network: true
   H2_retrofit: false
   H2_retrofit_capacity_per_CH4: 0.6
@@ -750,7 +772,7 @@ sector:
   gas_distribution_grid: true
   gas_distribution_grid_cost_factor: 1.0
   biomass_spatial: true
-  biomass_transport: true
+  biomass_transport: false
   biogas_upgrading: true
   biogas_upgrading_cc: false
   conventional_generation:
@@ -893,7 +915,7 @@ industry:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs
 costs:
-  year: 2030
+  year: 2050
   version: v0.13.3
   social_discountrate: 0.02
   fill_values:
@@ -906,8 +928,20 @@ costs:
     "CO2 intensity": 0
     "discount rate": 0.07
     "standing losses": 0
-  custom_cost_fn: data/custom_costs.csv
   overwrites: {}
+  marginal_cost:
+    solar: 0.01
+    onwind: 0.015
+    offwind: 0.015
+    hydro: 0.
+    H2: 0.
+    electrolysis: 0.
+    fuel cell: 0.
+    battery: 0.
+    battery inverter: 0.
+    home battery storage: 0
+    water tank charger: 0.03
+    central water pit charger: 0.025
   emission_prices:
     enable: false
     co2: 0.
@@ -987,7 +1021,7 @@ solving:
       fractional_last_unit_size: false
     keep_files: false
     model_kwargs:
-      solver_dir: "/scratch"
+      solver_dir: ""
 
   agg_p_nom_limits:
     agg_offwind: false
@@ -1079,6 +1113,6 @@ solving:
     atol: 1_000_000
     rtol: 0.01
 
-  mem_mb: 250000
+  mem_mb: 128000
   memory_logging_frequency: 5 # in seconds
   runtime: 48h #runtime in humanfriendly style https://humanfriendly.readthedocs.io/en/latest/

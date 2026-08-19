@@ -6,7 +6,6 @@
 plotting:
   map:
     boundaries: [-15,12, 35,48] #iberic    
-    #boundaries: [-12,8, 35,48] #iberic
     #boundaries: [-10,28, 46,73] #nordic
     geomap_colors:
       ocean: white

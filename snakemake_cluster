@@ -1,1 +1,1 @@
-snakemake --rerun-incomplete --latency-wait 100 --executor cluster-generic --cluster-generic-submit-cmd "sbatch --parsable --exclusive -p rome,windfatq,fatq -n 1 --time=48:00:00 --cpus-per-task {threads}"  "$@"
+snakemake --rerun-incomplete --latency-wait 100 --executor cluster-generic --cluster-generic-submit-cmd "sbatch --parsable --exclusive -p windfatq,fatq -n 1 --time=48:00:00 --cpus-per-task {threads}"  "$@"
