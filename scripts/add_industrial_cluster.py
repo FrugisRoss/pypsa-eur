@@ -351,7 +351,7 @@ def add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction):
 
 
 def add_generators_of_renewable_cluster(
-    n, cluster_size, cluster_cost_reduction, renewables, nodes_with_clusters
+    n, cluster_size, cluster_cost_reduction, renewables, nodes_with_clusters, costs
 ):
     # dictionaries of dataframes by (node, renewable), sorting the generators
     # by average capacity factor in descending order, and the subset assigned
@@ -480,9 +480,9 @@ def add_generators_of_renewable_cluster(
                     marginal_cost=clusters_generators[(node, renewable)]
                     .loc[idx]
                     .marginal_cost,
-                    capital_cost=clusters_generators[(node, renewable)]
+                    capital_cost=(clusters_generators[(node, renewable)]
                     .loc[idx]
-                    .capital_cost
+                    .capital_cost - costs.at["electricity grid connection", "capital_cost"])
                     * (1 - cluster_cost_reduction),
                     efficiency=clusters_generators[(node, renewable)]
                     .loc[idx]
@@ -520,7 +520,7 @@ def add_renewable_cluster(
     )
     n = add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction)
     n = add_generators_of_renewable_cluster(
-        n, cluster_size, cluster_cost_reduction, renewables, nodes_with_clusters
+        n, cluster_size, cluster_cost_reduction, renewables, nodes_with_clusters, costs
     )
 
     return n
