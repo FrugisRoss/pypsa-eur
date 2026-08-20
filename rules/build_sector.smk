@@ -1423,7 +1423,7 @@ rule prepare_sector_network:
         ),
     output:
         resources(
-            "networks/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc"
+            "networks/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}_precluster.nc"
         ),
     threads: 1
     resources:
@@ -1440,3 +1440,47 @@ rule prepare_sector_network:
         "../envs/environment.yaml"
     script:
         "../scripts/prepare_sector_network.py"
+
+
+
+rule add_industrial_cluster:
+    params:
+        countries=config_provider("countries"),
+        cluster_size=config_provider("industrial_cluster", "cluster_size"),
+        cost_reduction=config_provider("industrial_cluster", "cost_reduction"),
+        ongrid_buy=config_provider("industrial_cluster", "ongrid_buy"),
+        ongrid_sell=config_provider("industrial_cluster", "ongrid_sell"),
+
+        grid_connection_capacity=config_provider(
+            "industrial_cluster", "grid_connection_capacity"
+        ),
+        renewables=config_provider("industrial_cluster", "renewables"),
+        costs=config_provider("costs"),
+    input:
+        network=resources(
+            "networks/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}_precluster.nc"
+        ),
+        costs=lambda w: (
+            resources("costs_{}.csv".format(config_provider("costs", "year")(w)))
+            if config_provider("foresight")(w) == "overnight"
+            else resources("costs_{planning_horizons}.csv")
+        ),
+    output:
+        resources(
+            "networks/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.nc"
+        ),
+    threads: 1
+    resources:
+        mem_mb=4000,
+    log:
+        logs(
+            "add_industrial_cluster_base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}.log"
+        ),
+    benchmark:
+        benchmarks(
+            "add_industrial_cluster/base_s_{clusters}_{opts}_{sector_opts}_{planning_horizons}"
+        )
+    conda:
+        "../envs/environment.yaml"
+    script:
+        "../scripts/add_industrial_cluster.py"
