@@ -895,7 +895,8 @@ industrial_cluster:
   cost_reduction: 0.5 # fraction of capital cost reduction applied to cluster equipment (batteries, generators)
   ongrid_buy: true # whether the cluster is connected to the main electricity grid TO BUY
   ongrid_sell: false # whether the cluster is connected to the main electricity grid TO SELL
-  grid_connection_capacity: 1 # multiplier on cluster_size for the grid connection link's p_nom_max
+  grid_connection_capacity_buy: 1 # ratio of buy-side grid connection link capacity to the cluster's total renewable generator capacity
+  grid_connection_capacity_sell: 1 # ratio capping the sell-side grid connection link capacity relative to the cluster's total renewable generator capacity
   renewables: ["solar", "solar-hsat", "onwind"] # renewable carriers considered when assembling a cluster's generators
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs

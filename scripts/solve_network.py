@@ -238,7 +238,104 @@ def add_cluster_renewables_potential_constraint(n: pypsa.Network, config: dict) 
         logger.info(f"Adding {carrier} potential constraint for clusters.")
         n.model.add_constraints(lhs <= rhs, name=f"{carrier}_potential_cluster")
 
-        
+
+def add_grid_connection_buy_constraint(n: pypsa.Network, config: dict) -> None:
+    """
+    Sizes each renewable cluster's buy-side grid-connection link as a fixed
+    ratio of the cluster's total extendable renewable generator capacity:
+
+        p_nom_opt("{node} electricity renewable cluster back")
+            == grid_connection_capacity_buy * sum(p_nom_opt of "{node} ... renewable cluster" generators)
+    """
+    ratio = config["industrial_cluster"]["grid_connection_capacity_buy"]
+    rename_gen = {} if PYPSA_V1 else {"Generator-ext": "Generator"}
+    rename_link = {} if PYPSA_V1 else {"Link-ext": "Link"}
+
+    gen_cluster = n.generators[
+        n.generators.index.str.contains("renewable cluster")
+        & n.generators.p_nom_extendable
+    ].index
+    back_links = n.links[
+        n.links.index.str.contains("electricity renewable cluster back")
+        & n.links.p_nom_extendable
+    ].index
+
+    if gen_cluster.empty or back_links.empty:
+        logger.info(
+            "Skipping grid connection buy constraint: no cluster generators or back links found."
+        )
+        return
+
+    location = pd.Series(n.buses.location, index=n.buses.index)
+    ggrouper = n.generators.loc[gen_cluster].bus.map(location).rename("location")
+    lgrouper = n.links.loc[back_links].bus0.map(location).rename("location")
+
+    gens = (
+        n.model["Generator-p_nom"].rename(rename_gen).loc[gen_cluster]
+        .groupby(ggrouper)
+        .sum()
+    )
+    links = (
+        n.model["Link-p_nom"].rename(rename_link).loc[back_links]
+        .groupby(lgrouper)
+        .sum()
+    )
+
+    lhs = links - ratio * gens
+
+    logger.info("Adding grid connection buy constraint for renewable clusters.")
+    n.model.add_constraints(lhs == 0, name="grid_connection_capacity_buy")
+
+
+def add_grid_connection_sell_constraint(n: pypsa.Network, config: dict) -> None:
+    """
+    Caps each renewable cluster's sell-side grid-connection link at a fixed
+    ratio of the cluster's total extendable renewable generator capacity:
+
+        p_nom_opt("{node} electricity renewable cluster")
+            <= grid_connection_capacity_sell * sum(p_nom_opt of "{node} ... renewable cluster" generators)
+    """
+    ratio = config["industrial_cluster"]["grid_connection_capacity_sell"]
+    rename_gen = {} if PYPSA_V1 else {"Generator-ext": "Generator"}
+    rename_link = {} if PYPSA_V1 else {"Link-ext": "Link"}
+
+    gen_cluster = n.generators[
+        n.generators.index.str.contains("renewable cluster")
+        & n.generators.p_nom_extendable
+    ].index
+    sell_links = n.links[
+        n.links.index.str.contains("electricity renewable cluster")
+        & ~n.links.index.str.contains("electricity renewable cluster back")
+        & n.links.p_nom_extendable
+    ].index
+
+    if gen_cluster.empty or sell_links.empty:
+        logger.info(
+            "Skipping grid connection sell constraint: no cluster generators or sell links found."
+        )
+        return
+
+    location = pd.Series(n.buses.location, index=n.buses.index)
+    ggrouper = n.generators.loc[gen_cluster].bus.map(location).rename("location")
+    lgrouper = n.links.loc[sell_links].bus1.map(location).rename("location")
+
+    gens = (
+        n.model["Generator-p_nom"].rename(rename_gen).loc[gen_cluster]
+        .groupby(ggrouper)
+        .sum()
+    )
+    links = (
+        n.model["Link-p_nom"].rename(rename_link).loc[sell_links]
+        .groupby(lgrouper)
+        .sum()
+    )
+
+    lhs = links - ratio * gens
+
+    logger.info("Adding grid connection sell constraint for renewable clusters.")
+    n.model.add_constraints(lhs == 0, name="grid_connection_capacity_sell")
+
+
 def add_solar_potential_constraints(n: pypsa.Network, config: dict) -> None:
     """
     Add constraint to make sure the sum capacity of all solar technologies (fixed, tracking, ets. ) is below the region potential.
@@ -1265,6 +1362,11 @@ def extra_functionality(
         config["electricity"]["extendable_carriers"]["Generator"]
     ):
         add_solar_potential_constraints(n, config)
+
+    if config["industrial_cluster"]["ongrid_buy"]:
+        add_grid_connection_buy_constraint(n, config)
+    if config["industrial_cluster"]["ongrid_sell"]:
+        add_grid_connection_sell_constraint(n, config)
 
     if n.config.get("sector", {}).get("tes", False):
         if n.buses.index.str.contains(

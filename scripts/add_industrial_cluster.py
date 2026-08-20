@@ -107,7 +107,7 @@ def add_buses_of_renewable_cluster(n, nodes):
 
 
 def add_links_of_renewable_cluster(
-    n, nodes, cluster_cost_reduction, ongrid_buy, ongrid_sell, grid_connection_capacity, cluster_size, costs
+    n, nodes, cluster_cost_reduction, ongrid_buy, ongrid_sell, cluster_size, costs
 ):
     for node in nodes:
         ### H2 Electrolysis ###
@@ -511,12 +511,11 @@ def add_renewable_cluster(
     nodes_with_clusters,
     ongrid_buy,
     ongrid_sell,
-    grid_connection_capacity,
     costs,
 ):
     n = add_buses_of_renewable_cluster(n, nodes)
     n = add_links_of_renewable_cluster(
-        n, nodes, cluster_cost_reduction, ongrid_buy, ongrid_sell, grid_connection_capacity, cluster_size, costs
+        n, nodes, cluster_cost_reduction, ongrid_buy, ongrid_sell, cluster_size, costs
     )
     n = add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction)
     n = add_generators_of_renewable_cluster(
@@ -565,7 +564,6 @@ if __name__ == "__main__":
         nodes_with_clusters=nodes,
         ongrid_buy=snakemake.params.ongrid_buy,
         ongrid_sell=snakemake.params.ongrid_sell,
-        grid_connection_capacity=snakemake.params.grid_connection_capacity,
         costs=costs,
     )
 

@@ -1450,10 +1450,6 @@ rule add_industrial_cluster:
         cost_reduction=config_provider("industrial_cluster", "cost_reduction"),
         ongrid_buy=config_provider("industrial_cluster", "ongrid_buy"),
         ongrid_sell=config_provider("industrial_cluster", "ongrid_sell"),
-
-        grid_connection_capacity=config_provider(
-            "industrial_cluster", "grid_connection_capacity"
-        ),
         renewables=config_provider("industrial_cluster", "renewables"),
         costs=config_provider("costs"),
     input:
