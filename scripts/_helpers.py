@@ -824,6 +824,28 @@ def update_config_from_wildcards(config, w, inplace=True):
         if seq_limit is not None:
             config["sector"]["co2_sequestration_potential"] = seq_limit
 
+        _, cr_value = find_opt(opts, "CR")
+        if cr_value is not None:
+            config["industrial_cluster"]["cost_reduction"] = cr_value
+
+        if "onBUY" in opts:
+            config["industrial_cluster"]["ongrid_buy"] = True
+
+        if "onSELL" in opts:
+            config["industrial_cluster"]["ongrid_sell"] = True
+
+        _, buycap_value = find_opt(opts, "BUYcap")
+        if buycap_value is not None:
+            config["industrial_cluster"]["grid_connection_capacity_buy"] = (
+                buycap_value
+            )
+
+        _, sellcap_value = find_opt(opts, "SELLcap")
+        if sellcap_value is not None:
+            config["industrial_cluster"]["grid_connection_capacity_sell"] = (
+                sellcap_value
+            )
+
         # any config option can be represented in wildcard
         for o in opts:
             if o.startswith("CF+"):

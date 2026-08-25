@@ -239,7 +239,7 @@ def add_cluster_renewables_potential_constraint(n: pypsa.Network, config: dict) 
         n.model.add_constraints(lhs <= rhs, name=f"{carrier}_potential_cluster")
 
 
-def add_grid_connection_buy_constraint(n: pypsa.Network, config: dict) -> None:
+def add_cluster_grid_connection_buy_constraint(n: pypsa.Network, config: dict) -> None:
     """
     Sizes each renewable cluster's buy-side grid-connection link as a fixed
     ratio of the cluster's total extendable renewable generator capacity:
@@ -284,10 +284,10 @@ def add_grid_connection_buy_constraint(n: pypsa.Network, config: dict) -> None:
     lhs = links - ratio * gens
 
     logger.info("Adding grid connection buy constraint for renewable clusters.")
-    n.model.add_constraints(lhs == 0, name="grid_connection_capacity_buy")
+    n.model.add_constraints(lhs <= 0, name="grid_connection_capacity_buy")
 
 
-def add_grid_connection_sell_constraint(n: pypsa.Network, config: dict) -> None:
+def add_cluster_grid_connection_sell_constraint(n: pypsa.Network, config: dict) -> None:
     """
     Caps each renewable cluster's sell-side grid-connection link at a fixed
     ratio of the cluster's total extendable renewable generator capacity:
@@ -333,7 +333,7 @@ def add_grid_connection_sell_constraint(n: pypsa.Network, config: dict) -> None:
     lhs = links - ratio * gens
 
     logger.info("Adding grid connection sell constraint for renewable clusters.")
-    n.model.add_constraints(lhs == 0, name="grid_connection_capacity_sell")
+    n.model.add_constraints(lhs <= 0, name="grid_connection_capacity_sell")
 
 
 def add_solar_potential_constraints(n: pypsa.Network, config: dict) -> None:
@@ -1364,9 +1364,9 @@ def extra_functionality(
         add_solar_potential_constraints(n, config)
 
     if config["industrial_cluster"]["ongrid_buy"]:
-        add_grid_connection_buy_constraint(n, config)
+        add_cluster_grid_connection_buy_constraint(n, config)
     if config["industrial_cluster"]["ongrid_sell"]:
-        add_grid_connection_sell_constraint(n, config)
+        add_cluster_grid_connection_sell_constraint(n, config)
 
     if n.config.get("sector", {}).get("tes", False):
         if n.buses.index.str.contains(
