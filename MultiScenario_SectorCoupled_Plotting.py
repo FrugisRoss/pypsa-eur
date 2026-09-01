@@ -61,21 +61,9 @@ label_to_colors = {
     'Fischer-Tropsch renewable cluster': "#c99799",
     'Sabatier renewable cluster': '#debf12',
     'urban central DAC renewable cluster': "#3e1c04",
+    'electricity renewable cluster both': "#BEBBFA",
 
-    # Pointsource cluster variants
-    'methanolisation pointsource cluster': '#114002',
-    'H2 Electrolysis pointsource cluster': "#42f5d1",
-    'solar-hsat pointsource cluster': "#870000",
-    'solar pointsource cluster': "#bff542",
-    'battery charger pointsource cluster': "#193ade",
-    'battery discharger pointsource cluster': "#0d0f5c",
-    'electricity pointsource cluster': "#BEBBFA",
-    'electricity pointsource cluster back': "#889899",
-    'H2 Store pointsource cluster charge': "#59786d",
-    'H2 Store pointsource cluster discharge': "#2A483B",
-    'onwind pointsource cluster': "#8ad0ff",
-    'Fischer-Tropsch pointsource cluster': "#97b1c9",
-    'Sabatier pointsource cluster': '#debf12',
+
 }
 
 def find_wildcard_value(name: str, key: str) -> float:
@@ -95,6 +83,7 @@ def parse_wildcards(path: Path) -> dict:
         "CR": find_wildcard_value(name, "CR"),
         "BUYcap": find_wildcard_value(name, "BUYcap"),
         "SELLcap": find_wildcard_value(name, "SELLcap"),
+        "BOTHcap": find_wildcard_value(name, "BOTHcap"),
     }
 
 #%%
@@ -121,19 +110,148 @@ def add_co2_captured(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def plot_co2_heatmap(df: pd.DataFrame, title="CO2 captured in cluster [Mtons/year]"):
+def add_co2_marginal_price(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Pivot df on CR (x-axis) and BUYcap (y-axis) and plot a heatmap of
-    'co2 captured cluster [Mtons/year]'.
+    Load each network from its path and add a column with the CO2 marginal
+    price [euro/ton], taken from the shadow price (mu) of the CO2Limit global
+    constraint.
     """
+    df = df.copy()
+    co2_price = []
+    for path in df["path"]:
+        n = pypsa.Network(str(path))
+        mask = n.global_constraints.index.str.contains("CO2Limit")
+        co2_price.append(abs(n.global_constraints.loc[mask, "mu"].iloc[0]))
+    df["co2 price [euro/ton]"] = co2_price
+    return df
+
+
+def add_renewable_capacity_cluster(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Load each network from its path and add a column with the total optimised
+    renewable generator capacity installed in the industrial clusters [MW].
+    """
+    df = df.copy()
+    renewable_capacity = []
+    for path in df["path"]:
+        n = pypsa.Network(str(path))
+        mask = n.generators.index.str.contains("renewable cluster")
+        renewable_capacity.append(n.generators.loc[mask, "p_nom_opt"].sum())
+    df["renewable capacity cluster [MW]"] = renewable_capacity
+    return df
+
+
+def plot_heatmap_buycap_vs_cr(
+    df: pd.DataFrame,
+    sellcap,
+    bothcap,
+    value_col,
+    cmap="Purples",
+    cr_range=None,
+    buycap_range=None,
+    title="CO2 captured in cluster [Mtons/year]",
+):
+    """
+    Filter df to rows where SELLcap == sellcap and BOTHcap == bothcap, then pivot on CR (x-axis)
+    and BUYcap (y-axis) and plot a heatmap of the column ``value_col``.
+
+    cr_range and buycap_range are optional (min, max) tuples restricting
+    which CR / BUYcap values are included (default: all available values).
+    """
+
+    df = df.drop_duplicates(subset=["CR", "BUYcap", "SELLcap", "BOTHcap"], keep="first")
+    df = df.loc[df.SELLcap == sellcap]
+    df = df.loc[df.BOTHcap == bothcap]
+    if cr_range is not None:
+        df = df.loc[df.CR.between(cr_range[0], cr_range[1])]
+    if buycap_range is not None:
+        df = df.loc[df.BUYcap.between(buycap_range[0], buycap_range[1])]
+
     pivot = df.pivot(
-        index="BUYcap", columns="CR", values="co2 captured cluster [Mtons/year]"
+        index="BUYcap", columns="CR", values=value_col
     ).sort_index(axis=0, ascending=True).sort_index(axis=1, ascending=True)
     fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(pivot, annot=True, fmt=".2f", cmap="Purples", ax=ax)
+    sns.heatmap(pivot, annot=True, fmt=".2f", cmap=cmap, ax=ax)
     ax.invert_yaxis()
     ax.set_xlabel("CR")
     ax.set_ylabel("BUYcap")
+    ax.set_title(title)
+    return fig, ax
+
+
+def plot_heatmap_sellcap_vs_cr(
+    df: pd.DataFrame,
+    buycap,
+    bothcap,
+    value_col,
+    cmap="Purples",
+    cr_range=None,
+    sellcap_range=None,
+    title="CO2 captured in cluster [Mtons/year]",
+):
+    """
+    Filter df to rows where BUYcap == buycap and BOTHcap == bothcap, then pivot on CR (x-axis)
+    and SELLcap (y-axis) and plot a heatmap of the column ``value_col``.
+
+    cr_range and sellcap_range are optional (min, max) tuples restricting
+    which CR / SELLcap values are included (default: all available values).
+    """
+
+    df = df.drop_duplicates(subset=["CR", "BUYcap", "SELLcap", "BOTHcap"], keep="first")
+    df = df.loc[df.BUYcap == buycap]
+    df = df.loc[df.BOTHcap == bothcap]
+
+    if cr_range is not None:
+        df = df.loc[df.CR.between(cr_range[0], cr_range[1])]
+    if sellcap_range is not None:
+        df = df.loc[df.SELLcap.between(sellcap_range[0], sellcap_range[1])]
+    pivot = df.pivot(
+        index="SELLcap", columns="CR", values=value_col
+    ).sort_index(axis=0, ascending=True).sort_index(axis=1, ascending=True)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(pivot, annot=True, fmt=".2f", cmap=cmap, ax=ax)
+    ax.invert_yaxis()
+    ax.set_xlabel("CR")
+    ax.set_ylabel("SELLcap")
+    ax.set_title(title)
+    return fig, ax
+
+def plot_heatmap_bothcap_vs_cr(
+    df: pd.DataFrame,
+    buycap,
+    sellcap,
+    value_col,
+    cmap="Purples",
+    cr_range=None,
+    bothcap_range=None,
+    title="CO2 captured in cluster [Mtons/year]",
+):
+    """
+    Filter df to rows where BUYcap == buycap and SELLcap == sellcap,
+    then pivot on CR (x-axis) and BOTHcap (y-axis) and plot a heatmap
+    of the column ``value_col``.
+
+    cr_range and bothcap_range are optional (min, max) tuples restricting
+    which CR / BOTHcap values are included (default: all available values).
+    """
+
+    df = df.drop_duplicates(subset=["CR", "BUYcap", "SELLcap", "BOTHcap"], keep="first")
+    df = df.loc[df.BUYcap == buycap]
+    df = df.loc[df.SELLcap == sellcap]
+
+    if cr_range is not None:
+        df = df.loc[df.CR.between(cr_range[0], cr_range[1])]
+    if bothcap_range is not None:
+        df = df.loc[df.BOTHcap.between(bothcap_range[0], bothcap_range[1])]
+
+    pivot = df.pivot(
+        index="BOTHcap", columns="CR", values=value_col
+    ).sort_index(axis=0, ascending=True).sort_index(axis=1, ascending=True)
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.heatmap(pivot, annot=True, fmt=".2f", cmap=cmap, ax=ax)
+    ax.invert_yaxis()
+    ax.set_xlabel("CR")
+    ax.set_ylabel("BOTHcap")
     ax.set_title(title)
     return fig, ax
 
@@ -754,6 +872,134 @@ def plot_methanol_production_map(n, config_plotting, label_to_colors, boundaries
     ax.set_title("methanol")
     plt.show()
 
+def plot_FT_production_map(n, config_plotting, label_to_colors, boundaries):
+    weights = n.snapshot_weightings.generators
+    locations = n.buses[['location', 'x', 'y']].loc[n.buses['location'] != 'EU'].drop_duplicates(subset='location')
+    FT_links = pd.DataFrame(
+        index=n.links[
+            (n.links["bus1"].str.contains("EU oil")) &
+            (n.links["carrier"].str.contains("Fischer-Tropsch"))
+
+        ].index
+    )
+
+    for idx in FT_links.index:
+        key = idx[:5] if idx[5] == ' ' else idx[:6]
+        FT_links.loc[idx, 'x'] = locations.loc[key, 'x']
+        FT_links.loc[idx, 'y'] = locations.loc[key, 'y']
+        FT_links.loc[idx, 'location'] = locations.loc[key, 'location']
+
+    for tech in FT_links.index:
+        FT_links.loc[tech, 'FT_production'] = abs(
+            n.links_t['p1'].loc[:, tech].multiply(weights, axis=0).sum()
+        )
+
+    FT_links.index = FT_links.index.str.slice(start=7).where(
+        FT_links.index.str[6] == ' ',
+        FT_links.index.str.slice(start=6)
+    )
+
+    conversion = config_plotting["plotting"]["balance_map"]['methanol']["unit_conversion"]
+    bus_sizes = FT_links.groupby("location")["FT_production"].sum().div(conversion)
+    print(f'conversion: {conversion}')
+    print(f'bus_sizes {bus_sizes}')
+
+    geo_scale = 0.15
+
+    def size_to_radius(size_twh):
+        return np.sqrt(abs(size_twh) * 2)
+
+    crs = load_projection(copy.deepcopy(config_plotting["plotting"]))
+    print(crs)
+
+    fig, ax = plt.subplots(
+        figsize=(5, 6.5),
+        subplot_kw={"projection": crs},
+        layout="constrained",
+    )
+    ax.set_extent(boundaries, crs=ccrs.PlateCarree())
+    ax.add_feature(cfeature.OCEAN, facecolor="white", zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor="whitesmoke", zorder=0)
+    ax.add_feature(cfeature.COASTLINE, edgecolor="darkgrey", linewidth=0.5, zorder=1)
+    ax.add_feature(cfeature.BORDERS, edgecolor="darkgrey", linewidth=0.3, zorder=1)
+    ax.spines['geo'].set_visible(False)
+
+    grouped = FT_links.groupby("location")
+    loc_coords = FT_links.groupby("location")[["x", "y"]].first()
+
+    area_correction = get_projected_area_factor(ax, boundaries, srid=4326)
+
+    for loc, group in grouped:
+        x = float(loc_coords.loc[loc, "x"])
+        y = float(loc_coords.loc[loc, "y"])
+        total = group["FT_production"].sum()
+        shares = group["FT_production"] / total
+        loc_size = float(bus_sizes.loc[loc]) if loc in bus_sizes.index else 0
+
+        r_corrected = size_to_radius(loc_size) * geo_scale * area_correction
+        x_proj, y_proj = ax.projection.transform_point(x, y, ccrs.PlateCarree())
+
+        tech_colors = [label_to_colors.get(tech, "#cccccc") for tech in group.index]
+
+        theta1 = 180
+        for share, color in zip(shares, tech_colors):
+            dtheta = share * 180
+            theta2 = theta1 - dtheta
+
+            angles = np.linspace(np.radians(theta2), np.radians(theta1), 100)
+            xs = x_proj + r_corrected * np.cos(angles)
+            ys = y_proj + r_corrected * np.sin(angles)
+            verts = np.column_stack([xs, ys])
+            verts = np.vstack([[x_proj, y_proj], verts, [x_proj, y_proj]])
+
+            poly = Polygon(
+                verts,
+                closed=True,
+                facecolor=color,
+                edgecolor="white",
+                linewidth=0.3,
+                zorder=3,
+            )
+            ax.add_patch(poly)
+            theta1 = theta2
+
+    legend_sizes_twh = [1, 10]
+    carrier_unit = config_plotting["plotting"]["balance_map"]['methanol']["unit"]
+    add_legend_semicircles(
+        ax,
+        [s * geo_scale**2 for s in legend_sizes_twh],
+        [f"{s} {carrier_unit}" for s in legend_sizes_twh],
+        patch_kw={"color": "#666"},
+        legend_kw={
+            "bbox_to_anchor": (0, 1),
+            "labelspacing": 1,
+            "loc": "upper left",
+            "frameon": False,
+            "alignment": "left",
+            "title_fontproperties": {"weight": "bold"},
+        },
+    )
+
+    all_techs = FT_links.index.unique().tolist()
+    tech_colors_list = [label_to_colors.get(t, "#cccccc") for t in all_techs]
+    add_legend_patches(
+        ax,
+        tech_colors_list,
+        all_techs,
+        legend_kw={
+            "bbox_to_anchor": (0, -0.18),
+            "ncol": 1,
+            "title": "Fischer-Tropsch Production",
+            "loc": "upper left",
+            "frameon": False,
+            "alignment": "left",
+            "title_fontproperties": {"weight": "bold"},
+        },
+    )
+
+    ax.set_title("Fischer-Tropsch")
+    plt.show()
+
 
 def calculate_price_of_methanol_cluster(n):
     weights = n.snapshot_weightings.generators
@@ -781,14 +1027,149 @@ def calculate_price_of_methanol_cluster(n):
             average_price_of_methanol[node] = average
 
     return methanol_prices, average_price_of_methanol
+
+
+def plot_load_duration_curve(n,tech_dictionary):
+
+    h_per_snapshot = n.snapshot_weightings.generators.iloc[0]
+
+    #for node in ["GB2 06", "GB2 13", "DK0 0"]:
+    for node in ["PT0 2"]:
+
+        print(f"Processing node: {node}")  # Debug statement to track which node is being processed
+
+        load_durations=pd.DataFrame()
+        pnoms={}
+
+        if not any((node + " ")in techname for _, techname in tech_dictionary):
+            continue
+
+        for techtype, techname in tech_dictionary:
+            
+            timeserie=None
+            pnom=0
+        
+            if techtype=="generator"  and ((node + " ")in techname):
+                timeserie=(n.generators_t["p"].loc[:, techname])
+                pnom=n.generators.loc[techname, "p_nom_opt"]
+                print(f"{techname} p_nom: {pnom} MW")
+
+                
+            elif techtype=="link" and ((node + " ") in techname and "methanolisation" not in techname):
+                timeserie=(n.links_t["p0"].loc[:, techname]).abs()
+                pnom = (n.links.loc[techname,"p_nom_opt"])
+                print(f"{techname} p_nom: {pnom} MW")
+
+            elif techtype=="link" and ((node + " ") in techname and "methanolisation" in techname):
+                timeserie=(n.links_t["p2"].loc[:, techname]).abs()
+                pnom = abs((n.links.loc[techname,"p_nom_opt"])*((n.links.loc[techname,"efficiency2"])))
+                print(f"{techname} p_nom: {pnom} MW")
+
+
+
+
+
+            
+ 
+            load_duration=timeserie
+
+            if load_duration is None:
+                continue
+            
+            techname = techname[len(node):].lstrip()
+            if techtype == "generator":
+                techname = techname[2:]
+
+            load_duration=load_duration.sort_values(ascending=False).reset_index(drop=True)
+
+            
+            
+            if not load_duration.le(0.0001).all():
+                load_durations[techname] = load_duration
+                pnoms[techname] = pnom 
+
+
+
+        load_durations.index=load_durations.index*(h_per_snapshot)# convert to hours
+
+        print(load_durations.dtypes)
+        print(load_durations.head())
+
+
+        fig,ax=plt.subplots(figsize=(10,5))
+        load_durations.plot(ax=ax,
+                        ylabel='Power [MW]',
+                        xlabel= 'hours',
+                        title=f"Load Duration Curves for renewable technologies in {node}",
+                        color=[label_to_colors.get(label, "#cccccc")  # fallback color
+                               for label in load_durations.columns]
+                        )
+    
+        ax.set_xlim(left=0)
+        ax.set_xlim(right=8760)
+        ax.set_ylim(bottom=0)
+        ax.set_ylim(top=max(pnoms.values())*1.1)
+
+        tech_list = list(load_durations.columns)
+        lines = ax.get_lines()
+
+        for i, techname in enumerate(tech_list):
+            color = lines[i].get_color()        # same color as load_duration curve
+                                
+            # horizontal line
+            ax.hlines(y=pnoms[techname],
+                    xmin=0,
+                    xmax=8760,
+                    colors=color,
+                    linestyles="dashed")
+            print (f"{techname} p_nom: {pnoms[techname]} MW")
+            y_line = pnoms[techname]          
+            y_offset = 0.003                 
+
+            # label next to the line
+            ax.text(
+            8000,
+            y_line - y_offset,
+            "p_nom",
+            color=color,
+            va='top',
+            fontsize=10,                 
+            bbox=dict(
+                boxstyle="round,pad=0.3",
+                facecolor="white",
+                edgecolor=color,
+                alpha=0.8
+            )
+        )
+
+        
+        leg = ax.legend(
+            loc='upper left',           
+            bbox_to_anchor=(1.02,1),
+            frameon=True,
+        )
+
+        
+        fig.subplots_adjust(bottom=0.25)   
+        
+
+        
+        plt.show()
+
+    return load_durations, pnoms
+
+
+
+
 #%%
 #Iberian Peninsula
 
 
-networks_folder=r"results/Iberic40_2035_industrial_clusters_8h/all/networks"
+networks_folder=r"results/Iberic40_2035_industrial_clusters_both/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())                        
 regions=gdp.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
 
+#%%
 records = []
 for path in sorted(Path(networks_folder).glob("*.nc")):
     wc = parse_wildcards(path)
@@ -797,20 +1178,47 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 df = pd.DataFrame(records)
 
 df = add_co2_captured(df)
-fig, ax = plot_co2_heatmap(df,"CO2 captured in renewable clusters [Mtons/year] - Iberian Peninsula 2035")
-n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0), "path"].iloc[0]))
-eb_iberian=plot_balance_map_methanol_price(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+df = add_co2_marginal_price(df)
+df = add_renewable_capacity_cluster(df)
+
 #%%
-n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 1) & (df.SELLcap == 0), "path"].iloc[0]))
+
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "co2 captured cluster [Mtons/year]", "Purples", cr_range=None, buycap_range=(0, 1), title="CO2 captured in renewable clusters [Mtons/year] - Iberian Peninsula 2035")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "co2 captured cluster [Mtons/year]", "Purples", cr_range=None, sellcap_range=(0, 0.4), title="CO2 captured in renewable clusters [Mtons/year] - Iberian Peninsula 2035")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "co2 captured cluster [Mtons/year]", "Purples", cr_range=None, bothcap_range=(0, 0.4), title="CO2 captured in renewable clusters [Mtons/year] - Iberian Peninsula 2035")
+
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "co2 price [euro/ton]", "Reds", cr_range=None, buycap_range=(0, 1), title="CO2 marginal price [euro/ton] - Iberian Peninsula 2035")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "co2 price [euro/ton]", "Reds", cr_range=None, sellcap_range=(0, 0.4), title="CO2 marginal price [euro/ton] - Iberian Peninsula 2035")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "co2 price [euro/ton]", "Reds", cr_range=None, bothcap_range=(0, 0.4), title="CO2 marginal price [euro/ton] - Iberian Peninsula 2035")
+
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "renewable capacity cluster [MW]", "Greens", cr_range=None, buycap_range=(0, 1), title="Renewable capacity in clusters [MW] - Iberian Peninsula 2035")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "renewable capacity cluster [MW]", "Greens", cr_range=None, sellcap_range=(0, 0.4), title="Renewable capacity in clusters [MW] - Iberian Peninsula 2035")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "renewable capacity cluster [MW]", "Greens", cr_range=None, bothcap_range=(0, 0.4), title="Renewable capacity in clusters [MW] - Iberian Peninsula 2035")
+
+#%%
+n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+
+cluster_components = (
+    [("link", idx) for idx in n.links.index if ("cluster" in idx and "charger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
+    + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
+)
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components)
+
+#%%
+# n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0), "path"].iloc[0]))
+# eb_iberian=plot_balance_map_methanol_price(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+# #%%
+n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
 plot_methanol_production_map(n, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+plot_FT_production_map(n, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+
 methanol_prices_cluster, average_price_of_methanol_cluster = calculate_price_of_methanol_cluster(n)
-n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0), "path"].iloc[0]))
-plot_methanol_production_map(n, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+
 # %%
 #Noridc Countries
 
 
-networks_folder=r"results/Noridcs100_2035_industrial_clusters_8h/all/networks"
+networks_folder=r"results/Noridcs100_2035_industrial_clusters/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())                        
 regions=gdp.read_file(r'resources/Noridcs100_2035_industrial_clusters/all/regions_onshore_base_s_100.geojson').set_index("name")
 
@@ -823,13 +1231,38 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 df = pd.DataFrame(records)
 
 df = add_co2_captured(df)
-fig, ax = plot_co2_heatmap(df,"CO2 captured in renewable clusters [Mtons/year] - Nordics 2035")
-n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0), "path"].iloc[0]))
-eb_nordics=plot_balance_map_methanol_price(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
-n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 1) & (df.SELLcap == 0), "path"].iloc[0]))
+df = add_co2_marginal_price(df)
+df = add_renewable_capacity_cluster(df)
+
+#%%
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "co2 captured cluster [Mtons/year]", "Purples", cr_range=None, buycap_range=(0, 1), title="CO2 captured in renewable clusters [Mtons/year] - Nordics 2035")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "co2 captured cluster [Mtons/year]", "Purples", cr_range=None, sellcap_range=(0, 0.4), title="CO2 captured in renewable clusters [Mtons/year] - Nordics 2035")
+
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "co2 price [euro/ton]", "Reds", cr_range=None, buycap_range=(0, 1), title="CO2 marginal price [euro/ton] - Nordics 2035")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "co2 price [euro/ton]", "Reds", cr_range=None, sellcap_range=(0, 0.4), title="CO2 marginal price [euro/ton] - Nordics 2035")
+
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "renewable capacity cluster [MW]", "Greens", cr_range=None, buycap_range=(0, 1), title="Renewable capacity in clusters [MW] - Nordics 2035")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "renewable capacity cluster [MW]", "Greens", cr_range=None, sellcap_range=(0, 0.4), title="Renewable capacity in clusters [MW] - Nordics 2035")
+
+#%%
+n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0.2), "path"].iloc[0]))
+
+cluster_components = (
+    [("link", idx) for idx in n.links.index if ("cluster" in idx and "charger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
+    + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
+)
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components)
+# n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0), "path"].iloc[0]))
+# eb_nordics=plot_balance_map_methanol_price(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
+
+#%%
+n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.25) & (df.SELLcap == 0), "path"].iloc[0]))
 plot_methanol_production_map(n, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
+plot_FT_production_map(n, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 methanol_prices_cluster, average_price_of_methanol_cluster = calculate_price_of_methanol_cluster(n)
+
+#%%
 methanol_prices_cluster, average_price_of_methanol_cluster = calculate_price_of_methanol_cluster(n)
-n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0) & (df.SELLcap == 0.1), "path"].iloc[0]))
 plot_methanol_production_map(n, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 # %%

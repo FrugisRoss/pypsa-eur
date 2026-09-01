@@ -245,7 +245,7 @@ def add_cluster_grid_connection_buy_constraint(n: pypsa.Network, config: dict) -
     ratio of the cluster's total extendable renewable generator capacity:
 
         p_nom_opt("{node} electricity renewable cluster back")
-            == grid_connection_capacity_buy * sum(p_nom_opt of "{node} ... renewable cluster" generators)
+            <= grid_connection_capacity_buy * sum(p_nom_opt of "{node} ... renewable cluster" generators)
     """
     ratio = config["industrial_cluster"]["grid_connection_capacity_buy"]
     rename_gen = {} if PYPSA_V1 else {"Generator-ext": "Generator"}
@@ -306,6 +306,7 @@ def add_cluster_grid_connection_sell_constraint(n: pypsa.Network, config: dict) 
     sell_links = n.links[
         n.links.index.str.contains("electricity renewable cluster")
         & ~n.links.index.str.contains("electricity renewable cluster back")
+        & ~n.links.index.str.contains("electricity renewable cluster both")
         & n.links.p_nom_extendable
     ].index
 
@@ -334,6 +335,53 @@ def add_cluster_grid_connection_sell_constraint(n: pypsa.Network, config: dict) 
 
     logger.info("Adding grid connection sell constraint for renewable clusters.")
     n.model.add_constraints(lhs <= 0, name="grid_connection_capacity_sell")
+
+def add_cluster_grid_connection_both_constraint(n: pypsa.Network, config: dict) -> None:
+    """
+    Caps each renewable cluster's both-side grid-connection link at a fixed
+    ratio of the cluster's total extendable renewable generator capacity:
+
+        p_nom_opt("{node} electricity renewable cluster both")
+            <= grid_connection_capacity_both * sum(p_nom_opt of "{node} ... renewable cluster" generators)
+    """
+    ratio = config["industrial_cluster"]["grid_connection_capacity_both"]
+    rename_gen = {} if PYPSA_V1 else {"Generator-ext": "Generator"}
+    rename_link = {} if PYPSA_V1 else {"Link-ext": "Link"}
+
+    gen_cluster = n.generators[
+        n.generators.index.str.contains("renewable cluster")
+        & n.generators.p_nom_extendable
+    ].index
+    both_links = n.links[
+        n.links.index.str.contains("electricity renewable cluster both")
+        & n.links.p_nom_extendable
+    ].index
+
+    if gen_cluster.empty or both_links.empty:
+        logger.info(
+            "Skipping grid connection both constraint: no cluster generators or both links found."
+        )
+        return
+
+    location = pd.Series(n.buses.location, index=n.buses.index)
+    ggrouper = n.generators.loc[gen_cluster].bus.map(location).rename("location")
+    lgrouper = n.links.loc[both_links].bus0.map(location).rename("location")
+
+    gens = (
+        n.model["Generator-p_nom"].rename(rename_gen).loc[gen_cluster]
+        .groupby(ggrouper)
+        .sum()
+    )
+    links = (
+        n.model["Link-p_nom"].rename(rename_link).loc[both_links]
+        .groupby(lgrouper)
+        .sum()
+    )
+
+    lhs = links - ratio * gens
+
+    logger.info("Adding grid connection both constraint for renewable clusters.")
+    n.model.add_constraints(lhs <= 0, name="grid_connection_capacity_both")
 
 
 def add_solar_potential_constraints(n: pypsa.Network, config: dict) -> None:
@@ -1367,6 +1415,8 @@ def extra_functionality(
         add_cluster_grid_connection_buy_constraint(n, config)
     if config["industrial_cluster"]["ongrid_sell"]:
         add_cluster_grid_connection_sell_constraint(n, config)
+    if config["industrial_cluster"]["ongrid_both"]:
+        add_cluster_grid_connection_both_constraint(n, config)
 
     if n.config.get("sector", {}).get("tes", False):
         if n.buses.index.str.contains(

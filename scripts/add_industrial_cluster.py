@@ -107,7 +107,14 @@ def add_buses_of_renewable_cluster(n, nodes):
 
 
 def add_links_of_renewable_cluster(
-    n, nodes, cluster_cost_reduction, ongrid_buy, ongrid_sell, cluster_size, costs
+    n,
+    nodes,
+    cluster_cost_reduction,
+    ongrid_buy,
+    ongrid_sell,
+    ongrid_both,
+    cluster_size,
+    costs,
 ):
     for node in nodes:
         ### H2 Electrolysis ###
@@ -248,6 +255,26 @@ def add_links_of_renewable_cluster(
                 bus1=f"{node} renewable cluster",
                 carrier=n.buses.at[f"{node}", "carrier"],
                 p_nom_extendable=True,
+                efficiency=1.0,
+                capital_cost=costs.at["electricity grid connection", "capital_cost"],
+                marginal_cost=0.0,
+                reversed=False,
+                overwrite=True,
+            )
+
+        if ongrid_both:
+            ### Bidirectional electricity connection to grid ###
+
+            link_name = f"{node} electricity renewable cluster both"
+
+            n.add(
+                "Link",
+                name=link_name,
+                bus0=f"{node}",
+                bus1=f"{node} renewable cluster",
+                carrier=n.buses.at[f"{node}", "carrier"],
+                p_nom_extendable=True,
+                p_min_pu=-1,
                 efficiency=1.0,
                 capital_cost=costs.at["electricity grid connection", "capital_cost"],
                 marginal_cost=0.0,
@@ -511,11 +538,19 @@ def add_renewable_cluster(
     nodes_with_clusters,
     ongrid_buy,
     ongrid_sell,
+    ongrid_both,
     costs,
 ):
     n = add_buses_of_renewable_cluster(n, nodes)
     n = add_links_of_renewable_cluster(
-        n, nodes, cluster_cost_reduction, ongrid_buy, ongrid_sell, cluster_size, costs
+        n,
+        nodes,
+        cluster_cost_reduction,
+        ongrid_buy,
+        ongrid_sell,
+        ongrid_both,
+        cluster_size,
+        costs,
     )
     n = add_stores_of_renewable_cluster(n, nodes, cluster_cost_reduction)
     n = add_generators_of_renewable_cluster(
@@ -564,6 +599,7 @@ if __name__ == "__main__":
         nodes_with_clusters=nodes,
         ongrid_buy=snakemake.params.ongrid_buy,
         ongrid_sell=snakemake.params.ongrid_sell,
+        ongrid_both=snakemake.params.ongrid_both,
         costs=costs,
     )
 

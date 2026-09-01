@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Noridcs100_2035_industrial_clusters"
+  prefix: "Noridcs100_2035_industrial_clusters_both"
   name: "all"
   scenarios:
     enable: false
@@ -39,66 +39,42 @@ scenario:
   opts:
   - ''
   sector_opts:
-  - '3h-CR+0-onBUY-BUYcap+0'
-  - '3h-CR+0-onBUY-BUYcap+0p25'
-  - '3h-CR+0-onBUY-BUYcap+0p5'
-  - '3h-CR+0-onBUY-BUYcap+0p75'
-  - '3h-CR+0-onBUY-BUYcap+1'
-  - '3h-CR+0p1-onBUY-BUYcap+0'
-  - '3h-CR+0p1-onBUY-BUYcap+0p25'
-  - '3h-CR+0p1-onBUY-BUYcap+0p5'
-  - '3h-CR+0p1-onBUY-BUYcap+0p75'
-  - '3h-CR+0p1-onBUY-BUYcap+1'
-  - '3h-CR+0p2-onBUY-BUYcap+0'
-  - '3h-CR+0p2-onBUY-BUYcap+0p25'
-  - '3h-CR+0p2-onBUY-BUYcap+0p5'
-  - '3h-CR+0p2-onBUY-BUYcap+0p75'
-  - '3h-CR+0p2-onBUY-BUYcap+1'
-  - '3h-CR+0p3-onBUY-BUYcap+0'
-  - '3h-CR+0p3-onBUY-BUYcap+0p25'
-  - '3h-CR+0p3-onBUY-BUYcap+0p5'
-  - '3h-CR+0p3-onBUY-BUYcap+0p75'
-  - '3h-CR+0p3-onBUY-BUYcap+1'
-  - '3h-CR+0p4-onBUY-BUYcap+0'
-  - '3h-CR+0p4-onBUY-BUYcap+0p25'
-  - '3h-CR+0p4-onBUY-BUYcap+0p5'
-  - '3h-CR+0p4-onBUY-BUYcap+0p75'
-  - '3h-CR+0p4-onBUY-BUYcap+1'
-  - '3h-CR+0p5-onBUY-BUYcap+0'
-  - '3h-CR+0p5-onBUY-BUYcap+0p25'
-  - '3h-CR+0p5-onBUY-BUYcap+0p5'
-  - '3h-CR+0p5-onBUY-BUYcap+0p75'
-  - '3h-CR+0p5-onBUY-BUYcap+1'
-  - '3h-CR+0-onSELL-SELLcap+0'
-  - '3h-CR+0-onSELL-SELLcap+0p25'
-  - '3h-CR+0-onSELL-SELLcap+0p5'
-  - '3h-CR+0-onSELL-SELLcap+0p75'
-  - '3h-CR+0-onSELL-SELLcap+1'
-  - '3h-CR+0p1-onSELL-SELLcap+0'
-  - '3h-CR+0p1-onSELL-SELLcap+0p25'
-  - '3h-CR+0p1-onSELL-SELLcap+0p5'
-  - '3h-CR+0p1-onSELL-SELLcap+0p75'
-  - '3h-CR+0p1-onSELL-SELLcap+1'
-  - '3h-CR+0p2-onSELL-SELLcap+0'
-  - '3h-CR+0p2-onSELL-SELLcap+0p25'
-  - '3h-CR+0p2-onSELL-SELLcap+0p5'
-  - '3h-CR+0p2-onSELL-SELLcap+0p75'
-  - '3h-CR+0p2-onSELL-SELLcap+1'
-  - '3h-CR+0p3-onSELL-SELLcap+0'
-  - '3h-CR+0p3-onSELL-SELLcap+0p25'
-  - '3h-CR+0p3-onSELL-SELLcap+0p5'
-  - '3h-CR+0p3-onSELL-SELLcap+0p75'
-  - '3h-CR+0p3-onSELL-SELLcap+1'
-  - '3h-CR+0p4-onSELL-SELLcap+0'
-  - '3h-CR+0p4-onSELL-SELLcap+0p25'
-  - '3h-CR+0p4-onSELL-SELLcap+0p5'
-  - '3h-CR+0p4-onSELL-SELLcap+0p75'
-  - '3h-CR+0p4-onSELL-SELLcap+1'
-  - '3h-CR+0p5-onSELL-SELLcap+0'
-  - '3h-CR+0p5-onSELL-SELLcap+0p25'
-  - '3h-CR+0p5-onSELL-SELLcap+0p5'
-  - '3h-CR+0p5-onSELL-SELLcap+0p75'
-  - '3h-CR+0p5-onSELL-SELLcap+1'
+  - '8h-CR+0-onBOTH-BOTHcap+0'
+  - '8h-CR+0-onBOTH-BOTHcap+0p1'
+  - '8h-CR+0-onBOTH-BOTHcap+0p2'
+  - '8h-CR+0-onBOTH-BOTHcap+0p3'
+  - '8h-CR+0-onBOTH-BOTHcap+0p4'
+  - '8h-CR+0-onBOTH-BOTHcap+0p5'
+  - '8h-CR+0p1-onBOTH-BOTHcap+0'
+  - '8h-CR+0p1-onBOTH-BOTHcap+0p1'
+  - '8h-CR+0p1-onBOTH-BOTHcap+0p2'
+  - '8h-CR+0p1-onBOTH-BOTHcap+0p3'
+  - '8h-CR+0p1-onBOTH-BOTHcap+0p4'
+  - '8h-CR+0p1-onBOTH-BOTHcap+0p5'
+  - '8h-CR+0p2-onBOTH-BOTHcap+0'
+  - '8h-CR+0p2-onBOTH-BOTHcap+0p1'
+  - '8h-CR+0p2-onBOTH-BOTHcap+0p2'
+  - '8h-CR+0p2-onBOTH-BOTHcap+0p3'
+  - '8h-CR+0p2-onBOTH-BOTHcap+0p4'
+  - '8h-CR+0p2-onBOTH-BOTHcap+0p5'
+  - '8h-CR+0p3-onBOTH-BOTHcap+0'
+  - '8h-CR+0p3-onBOTH-BOTHcap+0p1'
+  - '8h-CR+0p3-onBOTH-BOTHcap+0p2'
+  - '8h-CR+0p3-onBOTH-BOTHcap+0p3'
+  - '8h-CR+0p3-onBOTH-BOTHcap+0p4'
+  - '8h-CR+0p3-onBOTH-BOTHcap+0p5'
+  - '8h-CR+0p4-onBOTH-BOTHcap+0'
+  - '8h-CR+0p4-onBOTH-BOTHcap+0p1'
+  - '8h-CR+0p4-onBOTH-BOTHcap+0p2'
+  - '8h-CR+0p4-onBOTH-BOTHcap+0p3'
+  - '8h-CR+0p4-onBOTH-BOTHcap+0p4'
+  - '8h-CR+0p4-onBOTH-BOTHcap+0p5'
+  - '8h-CR+0p5-onBOTH-BOTHcap+0'
+  - '8h-CR+0p5-onBOTH-BOTHcap+0p1'
+  - '8h-CR+0p5-onBOTH-BOTHcap+0p2'
+  - '8h-CR+0p5-onBOTH-BOTHcap+0p3'
+  - '8h-CR+0p5-onBOTH-BOTHcap+0p4'
+  - '8h-CR+0p5-onBOTH-BOTHcap+0p5'
   planning_horizons:
   - '2035'
 
@@ -958,9 +934,11 @@ industrial_cluster:
   cost_reduction: 0.5 # fraction of capital cost reduction applied to cluster equipment (batteries, generators)
   ongrid_buy: false # whether the cluster is connected to the main electricity grid TO BUY
   ongrid_sell: false # whether the cluster is connected to the main electricity grid TO SELL
+  ongrid_both: false # whether the cluster is connected to the main electricity grid TO BUY AND SELL
   #eventually add a line here that allows to specify whether the cluster is connected to the main electricity grid for both buying and selling WITH or WITHOUT a limit on the capacity of the connection
   grid_connection_capacity_buy: 1 # ratio of buy-side grid connection link capacity to the cluster's total renewable generator capacity
   grid_connection_capacity_sell: 1 # ratio capping the sell-side grid connection link capacity relative to the cluster's total renewable generator capacity
+  grid_connection_capacity_both: 1 # ratio capping the both-side grid connection link capacity relative to the cluster's total renewable generator capacity
   renewables: ["solar", "solar-hsat", "onwind"] # renewable carriers considered when assembling a cluster's generators
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs

@@ -834,6 +834,9 @@ def update_config_from_wildcards(config, w, inplace=True):
         if "onSELL" in opts:
             config["industrial_cluster"]["ongrid_sell"] = True
 
+        if "onBOTH" in opts:
+            config["industrial_cluster"]["ongrid_both"] = True
+
         _, buycap_value = find_opt(opts, "BUYcap")
         if buycap_value is not None:
             config["industrial_cluster"]["grid_connection_capacity_buy"] = (
@@ -844,6 +847,12 @@ def update_config_from_wildcards(config, w, inplace=True):
         if sellcap_value is not None:
             config["industrial_cluster"]["grid_connection_capacity_sell"] = (
                 sellcap_value
+            )
+
+        _, bothcap_value = find_opt(opts, "BOTHcap")
+        if bothcap_value is not None:
+            config["industrial_cluster"]["grid_connection_capacity_both"] = (
+                bothcap_value
             )
 
         # any config option can be represented in wildcard
