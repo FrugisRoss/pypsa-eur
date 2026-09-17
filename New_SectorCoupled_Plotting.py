@@ -1,3 +1,4 @@
+#%%
 import copy
 import pypsa
 import matplotlib.pyplot as plt
@@ -42,7 +43,7 @@ label_to_colors = {
     'Net Balance': "#FB0202",
     'onwind': "#0281d6",
     'Fischer-Tropsch': "#4e42f5",
-    'Sabatier': '#de6012',
+    'Sabatier': '#ebb028',
 
     # Renewable cluster variants
     'methanolisation renewable cluster': '#36ad0e',
@@ -61,7 +62,22 @@ label_to_colors = {
     'urban central DAC renewable cluster': "#3e1c04",
     'electricity renewable cluster both': "#BEBBFA",
 
+    'DAC': "#b93af0",
+    'SMR CC': "#6b3a1f",
+    'biogas to gas CC': "#8b4513",
+    'gas for industry CC': "#5c3317",
+    'process emissions CC': "#0d0d0d",
+    'solid biomass for industry CC': "#5a6b23",
+    'urban central gas CHP CC': "#7a4a21",
+    'urban central solid biomass CHP CC': "#4f6b2f",
+}
 
+# Display names for the grid-connection links in plots. The underlying
+# PyPSA link names ('... electricity renewable cluster' / '... electricity
+# renewable cluster back') stay as-is; only the plotted labels change.
+cluster_link_display_names = {
+    'electricity renewable cluster': 'grid connection (sell) renewable cluster',
+    'electricity renewable cluster back': 'grid connection (buy) renewable cluster',
 }
 
 def find_wildcard_value(name: str, key: str) -> float:
@@ -730,6 +746,8 @@ def plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, 
         total = group["methanol_production"].sum()
         shares = group["methanol_production"] / total
         loc_size = float(bus_sizes.loc[loc]) if loc in bus_sizes.index else 0
+        if loc_size <= 0.1:
+            continue
 
         r_corrected = size_to_radius(loc_size) * geo_scale * area_correction
         x_proj, y_proj = ax.projection.transform_point(x, y, ccrs.PlateCarree())
@@ -910,6 +928,8 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
         total = group["methanol_production"].sum()
         shares = group["methanol_production"] / total
         loc_size = float(bus_sizes.loc[loc]) if loc in bus_sizes.index else 0
+        if loc_size <= 0.1:
+            continue
 
         r_corrected = size_to_radius(loc_size) * geo_scale * area_correction
         x_proj, y_proj = ax.projection.transform_point(x, y, ccrs.PlateCarree())
@@ -1090,6 +1110,8 @@ def plot_methanol_production_solar_cf_colormap(n, regions, config_plotting, labe
         total = group["methanol_production"].sum()
         shares = group["methanol_production"] / total
         loc_size = float(bus_sizes.loc[loc]) if loc in bus_sizes.index else 0
+        if loc_size <= 0.1:
+            continue
 
         r_corrected = size_to_radius(loc_size) * geo_scale * area_correction
         x_proj, y_proj = ax.projection.transform_point(x, y, ccrs.PlateCarree())
@@ -1380,6 +1402,7 @@ def plot_load_duration_curve(n,tech_dictionary,nodes):
             techname = techname[len(node):].lstrip()
             if techtype == "generator":
                 techname = techname[2:]
+            techname = cluster_link_display_names.get(techname, techname)
 
             load_duration=load_duration.sort_values(ascending=False).reset_index(drop=True)
 
@@ -1458,6 +1481,71 @@ def plot_load_duration_curve(n,tech_dictionary,nodes):
         plt.show()
 
     return load_durations, pnoms
+
+
+def plot_cluster_capacities(n, tech_dictionary, nodes):
+
+    nodes = [nodes] if isinstance(nodes, str) else nodes
+
+    for node in nodes:
+
+        pnoms = {}
+
+        if not any((node + " ") in techname for _, techname in tech_dictionary):
+            continue
+
+        for techtype, techname in tech_dictionary:
+
+            pnom = None
+
+            if techtype == "generator" and ((node + " ") in techname):
+                pnom = n.generators.loc[techname, "p_nom_opt"]
+
+            elif techtype == "link" and ((node + " ") in techname and "methanolisation" not in techname):
+                pnom = n.links.loc[techname, "p_nom_opt"]
+
+            elif techtype == "link" and ((node + " ") in techname and "methanolisation" in techname):
+                pnom = abs((n.links.loc[techname, "p_nom_opt"]) * (n.links.loc[techname, "efficiency2"]))
+
+            if pnom is None:
+                continue
+
+            techname = techname[len(node):].lstrip()
+            if techtype == "generator":
+                techname = techname[2:]
+            techname = cluster_link_display_names.get(techname, techname)
+
+            if pnom > 1:
+                pnoms[techname] = pnom
+
+        if not pnoms:
+            continue
+
+        capacities = pd.Series(pnoms)
+
+        fig, ax = plt.subplots(figsize=(10, 5))
+        colors = [label_to_colors.get(label, "#cccccc") for label in capacities.index]
+        x = range(len(capacities))
+        for i, (techname, value) in enumerate(capacities.items()):
+            ax.bar(i, value, color=colors[i], label=techname)
+
+        ax.set_ylabel("Power [MW]")
+        ax.set_title(f"Installed Capacities in {node} Industrial Cluster")
+        ax.set_xticks(x)
+        ax.set_xticklabels([])
+        ax.set_ylim(bottom=0)
+
+        ax.legend(
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1),
+            frameon=True,
+        )
+
+        fig.subplots_adjust(right=0.75)
+
+        plt.show()
+
+    return pnoms
 
 
 def plot_cluster_curtailment(n, node):
@@ -1809,10 +1897,11 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
 
             if node in links:
                 clean_name = links[len(node):].lstrip()
+                clean_name = cluster_link_display_names.get(clean_name, clean_name)
 
 
 
-                
+
                 if "methanolisation" in links:
                     # methanolisation electricity input is on bus2
                     el_balance_cluster[node][clean_name]= (n.links_t["p2"].loc[:, links]/-10**3)*h_per_snapshot
@@ -1845,13 +1934,13 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
                 elif f"{node} electricity renewable cluster both"==links:
                     # bidirectional grid link carries both signs, which breaks the
                     # stacked area plot; split it into two single-signed columns.
-                    # positive p0 -> "electricity renewable cluster",
-                    # negative p0 -> "electricity renewable cluster back"
+                    # positive p0 -> "grid connection (buy)",
+                    # negative p0 -> "grid connection (sell)"
                     ts = (n.links_t["p0"].loc[:, links]/10**3)*h_per_snapshot
-                    el_balance_cluster[node]["electricity renewable cluster back"] = ts.clip(lower=0)
-                    el_balance_cluster[node]["electricity renewable cluster back"] = el_balance_cluster[node]["electricity renewable cluster back"].fillna(0)
-                    el_balance_cluster[node]["electricity renewable cluster"] = ts.clip(upper=0)
-                    el_balance_cluster[node]["electricity renewable cluster"] = el_balance_cluster[node]["electricity renewable cluster"].fillna(0)
+                    el_balance_cluster[node]["grid connection (buy)"] = ts.clip(lower=0)
+                    el_balance_cluster[node]["grid connection (buy)"] = el_balance_cluster[node]["grid connection (buy)"].fillna(0)
+                    el_balance_cluster[node]["grid connection (sell)"] = ts.clip(upper=0)
+                    el_balance_cluster[node]["grid connection (sell)"] = el_balance_cluster[node]["grid connection (sell)"].fillna(0)
 
         # print(el_balance_cluster[node])
         # net balance from the aggregated series, computed before masking so it
@@ -1901,7 +1990,7 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
     return el_balance_cluster
 
 #%%
-networks_folder=r"results/Iberic40_2035_industrial_clusters_all3h/all/networks"
+networks_folder=r"results/Iberic40_2035_industrial_clusters/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
 regions=gdp.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
 
@@ -1913,27 +2002,10 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
+
+#%%
+
 n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.0) & (df.SELLcap == 0)  & (df.BOTHcap == 0), "path"].iloc[0]))
-
-cluster_components = (
-    [("link", idx) for idx in n.links.index if ("cluster" in idx and "charger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
-    + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
-)
-load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 31"])
-#%%
-
-# cluster_curtailments = plot_cluster_curtailment(n, "ES0 31")
-# cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "ES0 31")
-# cluster_curtailment_energy = plot_cluster_monthly_curtailment_absolute(n, "ES0 31")
-#%%
-el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 31"],start_date='01-07-2013', end_date='01-14-2013')
-
-el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 31"],start_date='07-07-2013', end_date='07-14-2013')
-
-
-#%%
-
-n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.25) & (df.SELLcap == 0)  & (df.BOTHcap == 0), "path"].iloc[0]))
 
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "charger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
@@ -1976,13 +2048,14 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "charger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
-# load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK0 0"])
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK1 0"])
+pnoms = plot_cluster_capacities(n, cluster_components, ["DK1 0"])
 
 # cluster_curtailments = plot_cluster_curtailment(n, "DK0 0")
 # cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "DK0 0")

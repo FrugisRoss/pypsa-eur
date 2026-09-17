@@ -241,6 +241,7 @@ def add_links_of_renewable_cluster(
                 capital_cost=costs.at["electricity grid connection", "capital_cost"],
                 marginal_cost=0.0,
                 reversed=False,
+                lifetime=costs.at["electricity grid connection", "lifetime"],
                 overwrite=True,
             )
         
@@ -259,6 +260,7 @@ def add_links_of_renewable_cluster(
                 capital_cost=costs.at["electricity grid connection", "capital_cost"],
                 marginal_cost=0.0,
                 reversed=False,
+                lifetime=costs.at["electricity grid connection", "lifetime"],
                 overwrite=True,
             )
 
@@ -279,6 +281,7 @@ def add_links_of_renewable_cluster(
                 capital_cost=costs.at["electricity grid connection", "capital_cost"],
                 marginal_cost=0.0,
                 reversed=False,
+                lifetime=costs.at["electricity grid connection", "lifetime"],
                 overwrite=True,
             )
 
