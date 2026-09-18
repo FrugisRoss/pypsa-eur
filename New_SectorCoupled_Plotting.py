@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.patches import Polygon
+from matplotlib.lines import Line2D
 import geopandas as gpd
 from pypsa.plot import add_legend_lines, add_legend_patches, add_legend_semicircles
 import numpy as np
@@ -32,7 +33,7 @@ from scripts.plot_power_network import load_projection
 
 label_to_colors = {
     'methanolisation': "#2df7d6",
-    'solid biomass biomass-to-methanol': "#8442f5",
+    'solid biomass biomass-to-methanol': "#36ad0e",
     'H2 Electrolysis': "#187878",
     'solar rooftop': "#ffe204",
     'solar': "#f47b0a",
@@ -46,8 +47,8 @@ label_to_colors = {
     'Sabatier': '#ebb028',
 
     # Renewable cluster variants
-    'methanolisation renewable cluster': '#36ad0e',
-    'H2 Electrolysis renewable cluster': "#42f5d1",
+    'methanolisation renewable cluster': '#EB28B0',
+    'H2 Electrolysis renewable cluster': "#473BF5",
     'solar-hsat renewable cluster': "#870000",
     'solar renewable cluster': "#bff542",
     'battery charger renewable cluster': "#193ade",
@@ -59,7 +60,6 @@ label_to_colors = {
     'onwind renewable cluster': "#8ad0ff",
     'Fischer-Tropsch renewable cluster': "#c99799",
     'Sabatier renewable cluster': '#debf12',
-    'urban central DAC renewable cluster': "#3e1c04",
     'electricity renewable cluster both': "#BEBBFA",
 
     'DAC': "#b93af0",
@@ -70,6 +70,13 @@ label_to_colors = {
     'solid biomass for industry CC': "#5a6b23",
     'urban central gas CHP CC': "#7a4a21",
     'urban central solid biomass CHP CC': "#4f6b2f",
+
+
+    'DAC renewable cluster': "#ff8fab",
+
+    'grid connection (sell) renewable cluster':'#a69594',
+    'grid connection (buy) renewable cluster':'#858ba8'
+
 }
 
 # Display names for the grid-connection links in plots. The underlying
@@ -78,6 +85,8 @@ label_to_colors = {
 cluster_link_display_names = {
     'electricity renewable cluster': 'grid connection (sell) renewable cluster',
     'electricity renewable cluster back': 'grid connection (buy) renewable cluster',
+    'urban central DAC renewable cluster': 'DAC renewable cluster',
+    'urban decentral DAC renewable cluster': 'DAC renewable cluster',
 }
 
 def find_wildcard_value(name: str, key: str) -> float:
@@ -246,7 +255,207 @@ def compute_ft_and_methanol_prices(n):
 
     return FT_oil_prices, methanol_prices, FT_oil_prices_average, methanol_prices_average
 
+def compute_ft_and_methanol_prices_renewable_cluster(n):
+    """
+    Compute FT oil and methanol prices per node for production happening
+    inside the renewable cluster, based on marginal costs of inputs
+    (H2, CO2, electricity, heat) and allocated capital costs.
 
+    Identical in logic to compute_ft_and_methanol_prices, but pulls
+    links and buses from the 'renewable cluster' variants (i.e. names
+    with ' renewable cluster' appended).
+
+    Parameters
+    ----------
+    n : pypsa.Network
+        The solved network (generic name, e.g. n_base).
+
+    Returns
+    -------
+    FT_oil_prices_rc : pd.DataFrame
+    methanol_prices_rc : pd.DataFrame
+    FT_oil_prices_average_rc : pd.Series (indexed by location)
+    methanol_prices_average_rc : pd.Series (indexed by location)
+    methanol_cost_shares_rc : pd.DataFrame (indexed by location)
+        Per-unit contribution of each cost component to the average
+        methanol price (columns: 'H2_share', 'O_and_M_share',
+        'capital_share', 'electricity_share', 'CO2_share', 'heat_share').
+        Each is that component's term from the price_of_methanol formula,
+        summed over snapshots and divided by total methanol production,
+        computed the same way as methanol_prices_average_rc so the six
+        shares sum to it exactly. 'CO2_share' additionally nets out the
+        CO2 allowance credit (-co2_intensity_methanol * co2_price), and
+        'heat_share' is negative since it's a credit in the price formula.
+    """
+
+    weights = n.snapshot_weightings.generators
+
+    locations = n.buses.loc[(n.buses['carrier'] == 'AC'), ['location']].location.unique()
+
+    methanol_prices_rc = pd.DataFrame(index=n.snapshots, columns=locations)
+    FT_oil_prices_rc = pd.DataFrame(index=n.snapshots, columns=locations)
+    capital_cost_allocated_FT_rc = pd.DataFrame(index=n.snapshots, columns=locations)
+    capital_cost_allocated_methanolisation_rc = pd.DataFrame(index=n.snapshots, columns=locations)
+
+    FT_oil_prices_average_rc = pd.Series(index=locations, dtype=float)
+    methanol_prices_average_rc = pd.Series(index=locations, dtype=float)
+
+    methanol_cost_shares_rc = pd.DataFrame(
+        index=locations,
+        columns=['H2_share', 'O_and_M_share', 'capital_share', 'electricity_share', 'CO2_share', 'heat_share'],
+        dtype=float,
+    )
+
+    co2_intensity_FT = (
+        n.links.loc[
+            n.links.index.str.contains("Fischer-Tropsch") & n.links.index.str.contains("renewable cluster"),
+            'efficiency2'
+        ].iloc[0]
+        / n.links.loc[
+            n.links.index.str.contains("Fischer-Tropsch") & n.links.index.str.contains("renewable cluster"),
+            'efficiency'
+        ].iloc[0]
+    )
+
+    co2_intensity_methanol = n.links.loc[
+        n.links.index.str.contains("EU shipping methanol"),
+        'efficiency2'
+    ].iloc[0]
+
+    co2_price = n.global_constraints.loc[
+        n.global_constraints.carrier_attribute.str.contains("co2_emissions"), 'mu'
+    ].iloc[0]
+
+    for node in locations:
+
+        # ---------------- Fischer-Tropsch (renewable cluster) ----------------
+        link_FT = f"{node} Fischer-Tropsch renewable cluster"
+        if n.links.index.str.contains(f"^{link_FT}$").any():
+
+            if n.links.loc[n.links.index == link_FT, 'p_nom_opt'].iloc[0] > 1:
+                O_and_M_cost = n.links.loc[n.links.index == link_FT, 'marginal_cost'].iloc[0]
+                capital_cost = (
+                    n.links.loc[n.links.index == link_FT, 'capital_cost'].iloc[0]
+                    * n.links.loc[n.links.index == link_FT, 'p_nom_opt'].iloc[0]
+                )
+
+                price_of_H2 = n.buses_t.marginal_price.loc[:, node + ' H2 renewable cluster']
+                consumption_of_H2 = n.links_t.p0.loc[:, link_FT]
+                consumption_of_H2_total = n.links_t.p0.loc[:, link_FT].multiply(weights, axis=0).sum()
+
+                capital_cost_allocated_FT_rc[node] = capital_cost * consumption_of_H2 / consumption_of_H2_total
+
+                price_of_CO2 = n.buses_t.marginal_price.loc[:, node + ' co2 stored renewable cluster']
+                consumption_of_CO2 = n.links_t.p2.loc[:, link_FT]
+
+                price_of_heat = 0
+                production_of_heat = 0
+                if node + ' urban central heat renewable cluster' in n.buses_t.marginal_price.columns:
+                    price_of_heat = n.buses_t.marginal_price.loc[:, node + ' urban central heat renewable cluster']
+                    production_of_heat = n.links_t.p3.loc[:, link_FT].abs()
+
+                production_of_FT_oil = n.links_t.p1.loc[:, link_FT].abs()
+
+                price_of_FT_oil = (
+                    price_of_H2 * consumption_of_H2
+                    + O_and_M_cost * consumption_of_H2
+                    + capital_cost_allocated_FT_rc[node]
+                    + price_of_CO2 * consumption_of_CO2
+                    - price_of_heat * production_of_heat
+                ) / production_of_FT_oil - (-co2_intensity_FT * co2_price)
+
+                FT_oil_prices_rc[node] = price_of_FT_oil
+
+                FT_oil_prices_average_rc[node] = (
+                    price_of_H2 * consumption_of_H2
+                    + O_and_M_cost * consumption_of_H2
+                    + capital_cost_allocated_FT_rc[node]
+                    + price_of_CO2 * consumption_of_CO2
+                    - price_of_heat * production_of_heat
+                ).sum() / production_of_FT_oil.sum() - (-co2_intensity_FT * co2_price)
+
+        # ---------------- Methanolisation (renewable cluster) ----------------
+        link_meth = f"{node} methanolisation renewable cluster"
+        if n.links.index.str.contains(f"^{link_meth}$").any():
+
+            if n.links.loc[n.links.index == link_meth, 'p_nom_opt'].iloc[0] > 1:
+                O_and_M_cost = n.links.loc[n.links.index == link_meth, 'marginal_cost'].iloc[0]
+                capital_cost = (
+                    n.links.loc[n.links.index == link_meth, 'capital_cost'].iloc[0]
+                    * n.links.loc[n.links.index == link_meth, 'p_nom_opt'].iloc[0]
+                )
+
+                price_of_H2 = n.buses_t.marginal_price.loc[:, node + ' H2 renewable cluster']
+                consumption_of_H2 = n.links_t.p0.loc[:, link_meth]
+                consumption_of_H2_total = n.links_t.p0.loc[:, link_meth].multiply(weights, axis=0).sum()
+
+                capital_cost_allocated_methanolisation_rc[node] = (
+                    capital_cost * consumption_of_H2 / consumption_of_H2_total
+                )
+
+                price_of_CO2 = n.buses_t.marginal_price.loc[:, node + ' co2 stored renewable cluster']
+                consumption_of_CO2 = n.links_t.p3.loc[:, link_meth]
+                price_of_electricity = n.buses_t.marginal_price.loc[:, node + ' renewable cluster']
+                consumption_of_electricity = n.links_t.p2.loc[:, link_meth]
+
+                price_of_heat = 0
+                production_of_heat = 0
+                if node + ' urban central heat renewable cluster' in n.buses_t.marginal_price.columns:
+                    price_of_heat = n.buses_t.marginal_price.loc[:, node + ' urban central heat renewable cluster']
+                    production_of_heat = n.links_t.p4.loc[:, link_meth].abs()
+
+                production_of_methanol = n.links_t.p1.loc[:, link_meth].abs()
+
+                price_of_methanol = (
+                    price_of_H2 * consumption_of_H2
+                    + O_and_M_cost * consumption_of_H2
+                    + capital_cost_allocated_methanolisation_rc[node]
+                    + price_of_electricity * consumption_of_electricity
+                    + price_of_CO2 * consumption_of_CO2
+                    - price_of_heat * production_of_heat
+                ) / production_of_methanol - co2_intensity_methanol * co2_price
+
+                methanol_prices_rc[node] = price_of_methanol
+
+                methanol_prices_average_rc[node] = (
+                    price_of_H2 * consumption_of_H2
+                    + O_and_M_cost * consumption_of_H2
+                    + capital_cost_allocated_methanolisation_rc[node]
+                    + price_of_electricity * consumption_of_electricity
+                    + price_of_CO2 * consumption_of_CO2
+                    - price_of_heat * production_of_heat
+                ).sum() / production_of_methanol.sum() - co2_intensity_methanol * co2_price
+
+                # ---- shares of the average methanol price, per cost component ----
+                methanol_cost_shares_rc.loc[node, 'H2_share'] = (
+                    (price_of_H2 * consumption_of_H2).sum() / production_of_methanol.sum()
+                )
+                methanol_cost_shares_rc.loc[node, 'O_and_M_share'] = (
+                    (O_and_M_cost * consumption_of_H2).sum() / production_of_methanol.sum()
+                )
+                methanol_cost_shares_rc.loc[node, 'capital_share'] = (
+                    capital_cost_allocated_methanolisation_rc[node].sum() / production_of_methanol.sum()
+                )
+                methanol_cost_shares_rc.loc[node, 'electricity_share'] = (
+                    (price_of_electricity * consumption_of_electricity).sum() / production_of_methanol.sum()
+                )
+                methanol_cost_shares_rc.loc[node, 'CO2_share'] = (
+                    (price_of_CO2 * consumption_of_CO2).sum() / production_of_methanol.sum()
+                    - co2_intensity_methanol * co2_price
+                )
+                methanol_cost_shares_rc.loc[node, 'heat_share'] = (
+                    -(price_of_heat * production_of_heat).sum() / production_of_methanol.sum()
+                    if isinstance(production_of_heat, pd.Series)
+                    else 0.0
+                )
+
+    return (
+        FT_oil_prices_rc,
+        methanol_prices_rc,
+        FT_oil_prices_average_rc,
+        methanol_prices_average_rc,
+        methanol_cost_shares_rc,
+    )
 def compute_avg_electricity_price(n):
     """
     Compute the load-weighted average electricity price per node.
@@ -776,7 +985,7 @@ def plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, 
             ax.add_patch(poly)
             theta1 = theta2
 
-    ax.set_title("methanol")
+    ax.set_title("Methanol Production", fontsize=8)
 
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
     sm = plt.cm.ScalarMappable(cmap=red_cmap, norm=norm)
@@ -785,7 +994,7 @@ def plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, 
         ax=ax,
         label="Average electricity price [€/MWh]",
         shrink=0.95,
-        pad=0.01,
+        pad=0.0,
         aspect=50,
         orientation="horizontal",
     )
@@ -793,6 +1002,40 @@ def plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, 
 
     cbar.outline.set_edgecolor("None")
     cbar.ax.xaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+    cbar.set_label("Average electricity price [€/MWh]", fontsize=6)
+    cbar.ax.tick_params(labelsize=6)
+
+    # Legend text/handle sizing to match the co2-stored map: compact
+    # patches for the tech legend, default handle sizing for the
+    # semicircle-size legend (reusing the compact handlelength/
+    # handleheight there distorts the relative circle sizes).
+    legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": 6,
+        "title_fontproperties": {
+            "weight": "bold",
+            "size": 7,
+        },
+        "handlelength": 1.0,
+        "handleheight": 1.0,
+        "handletextpad": 0.4,
+        "labelspacing": 0.25,
+        "borderaxespad": 0.2,
+    }
+
+    size_legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": 6,
+        "title_fontproperties": {
+            "weight": "bold",
+            "size": 7,
+        },
+        "labelspacing": 0.4,
+    }
 
     all_techs = methanol_links.index.unique().tolist()
     tech_colors_list = [label_to_colors.get(t, "#cccccc") for t in all_techs]
@@ -801,13 +1044,10 @@ def plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, 
         tech_colors_list,
         all_techs,
         legend_kw={
-            "bbox_to_anchor": (0, -0.18),
+            "bbox_to_anchor": (0, -0.10),
             "ncol": 1,
             "title": "Methanol Production",
-            "loc": "upper left",
-            "frameon": False,
-            "alignment": "left",
-            "title_fontproperties": {"weight": "bold"},
+            **legend_kwargs,
         },
     )
 
@@ -820,11 +1060,7 @@ def plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, 
         patch_kw={"color": "#666"},
         legend_kw={
             "bbox_to_anchor": (0, 1),
-            "labelspacing": 1,
-            "loc": "upper left",
-            "frameon": False,
-            "alignment": "left",
-            "title_fontproperties": {"weight": "bold"},
+            **size_legend_kwargs,
         },
     )
 
@@ -958,7 +1194,7 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
             ax.add_patch(poly)
             theta1 = theta2
 
-    ax.set_title("methanol")
+    ax.set_title("Methanol Production", fontsize=8)
 
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
     sm = plt.cm.ScalarMappable(cmap=blue_cmap, norm=norm)
@@ -967,7 +1203,7 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
         ax=ax,
         label="Average onshore wind capacity factor [-]",
         shrink=0.95,
-        pad=0.01,
+        pad=0.0,
         aspect=50,
         orientation="horizontal",
     )
@@ -975,6 +1211,36 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
 
     cbar.outline.set_edgecolor("None")
     cbar.ax.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+    cbar.set_label("Average onshore wind capacity factor [-]", fontsize=6)
+    cbar.ax.tick_params(labelsize=6)
+
+    legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": 6,
+        "title_fontproperties": {
+            "weight": "bold",
+            "size": 7,
+        },
+        "handlelength": 1.0,
+        "handleheight": 1.0,
+        "handletextpad": 0.4,
+        "labelspacing": 0.25,
+        "borderaxespad": 0.2,
+    }
+
+    size_legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": 6,
+        "title_fontproperties": {
+            "weight": "bold",
+            "size": 7,
+        },
+        "labelspacing": 0.4,
+    }
 
     all_techs = methanol_links.index.unique().tolist()
     tech_colors_list = [label_to_colors.get(t, "#cccccc") for t in all_techs]
@@ -983,13 +1249,10 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
         tech_colors_list,
         all_techs,
         legend_kw={
-            "bbox_to_anchor": (0, -0.18),
+            "bbox_to_anchor": (0, -0.10),
             "ncol": 1,
             "title": "Methanol Production",
-            "loc": "upper left",
-            "frameon": False,
-            "alignment": "left",
-            "title_fontproperties": {"weight": "bold"},
+            **legend_kwargs,
         },
     )
 
@@ -1002,11 +1265,7 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
         patch_kw={"color": "#666"},
         legend_kw={
             "bbox_to_anchor": (0, 1),
-            "labelspacing": 1,
-            "loc": "upper left",
-            "frameon": False,
-            "alignment": "left",
-            "title_fontproperties": {"weight": "bold"},
+            **size_legend_kwargs,
         },
     )
 
@@ -1140,7 +1399,7 @@ def plot_methanol_production_solar_cf_colormap(n, regions, config_plotting, labe
             ax.add_patch(poly)
             theta1 = theta2
 
-    ax.set_title("methanol")
+    ax.set_title("Methanol Production", fontsize=8)
 
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
     sm = plt.cm.ScalarMappable(cmap=orange_cmap, norm=norm)
@@ -1149,7 +1408,7 @@ def plot_methanol_production_solar_cf_colormap(n, regions, config_plotting, labe
         ax=ax,
         label="Average solar capacity factor [-]",
         shrink=0.95,
-        pad=0.01,
+        pad=0.0,
         aspect=50,
         orientation="horizontal",
     )
@@ -1157,6 +1416,36 @@ def plot_methanol_production_solar_cf_colormap(n, regions, config_plotting, labe
 
     cbar.outline.set_edgecolor("None")
     cbar.ax.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+    cbar.set_label("Average solar capacity factor [-]", fontsize=6)
+    cbar.ax.tick_params(labelsize=6)
+
+    legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": 6,
+        "title_fontproperties": {
+            "weight": "bold",
+            "size": 7,
+        },
+        "handlelength": 1.0,
+        "handleheight": 1.0,
+        "handletextpad": 0.4,
+        "labelspacing": 0.25,
+        "borderaxespad": 0.2,
+    }
+
+    size_legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": 6,
+        "title_fontproperties": {
+            "weight": "bold",
+            "size": 7,
+        },
+        "labelspacing": 0.4,
+    }
 
     all_techs = methanol_links.index.unique().tolist()
     tech_colors_list = [label_to_colors.get(t, "#cccccc") for t in all_techs]
@@ -1165,13 +1454,10 @@ def plot_methanol_production_solar_cf_colormap(n, regions, config_plotting, labe
         tech_colors_list,
         all_techs,
         legend_kw={
-            "bbox_to_anchor": (0, -0.18),
+            "bbox_to_anchor": (0, -0.10),
             "ncol": 1,
             "title": "Methanol Production",
-            "loc": "upper left",
-            "frameon": False,
-            "alignment": "left",
-            "title_fontproperties": {"weight": "bold"},
+            **legend_kwargs,
         },
     )
 
@@ -1184,13 +1470,225 @@ def plot_methanol_production_solar_cf_colormap(n, regions, config_plotting, labe
         patch_kw={"color": "#666"},
         legend_kw={
             "bbox_to_anchor": (0, 1),
-            "labelspacing": 1,
-            "loc": "upper left",
-            "frameon": False,
-            "alignment": "left",
-            "title_fontproperties": {"weight": "bold"},
+            **size_legend_kwargs,
         },
     )
+
+    plt.show()
+
+
+
+
+def plot_dac_captured_co2_onwind_cf_colormap(n, regions, config_plotting, label_to_colors, boundaries):
+    weights = n.snapshot_weightings.generators
+    locations = n.buses[['location', 'x', 'y']].loc[n.buses['location'] != 'EU'].drop_duplicates(subset='location')
+
+    # DAC links: identified purely by 'DAC' appearing in the link name
+    dac_links = pd.DataFrame(
+        index=n.links[n.links.index.str.contains("DAC")].index
+    )
+
+    for idx in dac_links.index:
+        key = idx[:5] if idx[5] == ' ' else idx[:6]
+        dac_links.loc[idx, 'x'] = locations.loc[key, 'x']
+        dac_links.loc[idx, 'y'] = locations.loc[key, 'y']
+        dac_links.loc[idx, 'location'] = locations.loc[key, 'location']
+
+    # Captured CO2 comes out of p2 (the CO2 bus port), not p1
+    for tech in dac_links.index:
+        dac_links.loc[tech, 'co2_captured'] = abs(
+            n.links_t['p2'].loc[:, tech].multiply(weights, axis=0).sum()
+        )
+
+    # Strip the location prefix (e.g. "DE0 0 ") to leave just the tech label
+    tech_raw = dac_links.index.str.slice(start=7).where(
+        dac_links.index.str[6] == ' ',
+        dac_links.index.str.slice(start=6)
+    )
+
+    # Collapse everything down to just two buckets: any 'renewable cluster'
+    # variant, and everything else (urban central / urban decentral / ...)
+    # merged into a plain 'DAC' bucket.
+    dac_links['tech'] = np.where(
+        tech_raw.str.contains('renewable cluster'),
+        'DAC renewable cluster',
+        'DAC',
+    )
+
+    # NOTE: point this at whatever key your config uses for CO2 units
+    # (e.g. add a 'co2' entry to config_plotting["plotting"]["balance_map"]
+    # analogous to the 'methanol' one, with its own unit_conversion/unit)
+    conversion = config_plotting["plotting"]["balance_map"]['co2 stored']["unit_conversion"]
+    bus_sizes = dac_links.groupby("location")["co2_captured"].sum().div(conversion)
+
+    geo_scale = 0.40
+
+    def size_to_radius(size_val):
+        return np.sqrt(abs(size_val) * 2)
+
+    # --------------------------------------------------
+    # AVERAGE ONSHORE WIND CAPACITY FACTOR (per node)
+    # --------------------------------------------------
+    avg_onwind_cf = compute_avg_capacity_factor(n, "onwind")
+    regions = regions.copy()
+    # NOTE: no fillna here - nodes with no onwind generator stay NaN
+    # so geopandas skips them instead of drawing them as 0.
+    regions["onwind_cf"] = avg_onwind_cf.reindex(regions.index)
+
+    vmin = regions.onwind_cf.min()  # NaNs ignored automatically
+    vmax = regions.onwind_cf.max()
+    if vmin == vmax:
+        vmax += 1
+
+    blue_cmap = mcolors.LinearSegmentedColormap.from_list(
+        "blue_scale",
+        ["#e5f0ff", "#0d47a1", "#00204d"],
+    )
+
+    crs = load_projection(copy.deepcopy(config_plotting["plotting"]))
+
+    fig, ax = plt.subplots(
+        figsize=(5, 6.5),
+        subplot_kw={"projection": crs},
+        layout="constrained",
+    )
+    ax.set_extent(boundaries, crs=ccrs.PlateCarree())
+    ax.add_feature(cfeature.OCEAN, facecolor="white", zorder=0)
+    ax.add_feature(cfeature.LAND, facecolor="whitesmoke", zorder=0)
+    regions.to_crs(crs.proj4_init).plot(
+        ax=ax,
+        column="onwind_cf",
+        cmap=blue_cmap,
+        vmin=vmin,
+        vmax=vmax,
+        edgecolor="None",
+        linewidth=0,
+        zorder=0.5,
+        missing_kwds={
+            "color": "none",
+        },
+    )
+    ax.add_feature(cfeature.COASTLINE, edgecolor="darkgrey", linewidth=0.5, zorder=1)
+    ax.add_feature(cfeature.BORDERS, edgecolor="darkgrey", linewidth=0.3, zorder=1)
+    ax.spines['geo'].set_visible(False)
+
+    grouped = dac_links.groupby(["location", "tech"])["co2_captured"].sum().reset_index().groupby("location")
+    loc_coords = dac_links.groupby("location")[["x", "y"]].first()
+
+    area_correction = get_projected_area_factor(ax, boundaries, srid=4326)
+
+    for loc, group in grouped:
+        x = float(loc_coords.loc[loc, "x"])
+        y = float(loc_coords.loc[loc, "y"])
+        total = group["co2_captured"].sum()
+        shares = group["co2_captured"] / total
+        loc_size = float(bus_sizes.loc[loc]) if loc in bus_sizes.index else 0
+        if loc_size <= 0.001:
+            continue
+
+        r_corrected = size_to_radius(loc_size) * geo_scale * area_correction
+        x_proj, y_proj = ax.projection.transform_point(x, y, ccrs.PlateCarree())
+
+        tech_colors = [label_to_colors.get(tech, "#cccccc") for tech in group["tech"]]
+
+        theta1 = 180
+        for share, color in zip(shares, tech_colors):
+            dtheta = share * 180
+            theta2 = theta1 - dtheta
+
+            angles = np.linspace(np.radians(theta2), np.radians(theta1), 100)
+            xs = x_proj + r_corrected * np.cos(angles)
+            ys = y_proj + r_corrected * np.sin(angles)
+            verts = np.column_stack([xs, ys])
+            verts = np.vstack([[x_proj, y_proj], verts, [x_proj, y_proj]])
+
+            poly = Polygon(
+                verts,
+                closed=True,
+                facecolor=color,
+                edgecolor="white",
+                linewidth=0.3,
+                zorder=3,
+            )
+            ax.add_patch(poly)
+            theta1 = theta2
+
+    ax.set_title("DAC Captured CO₂", fontsize=8)
+
+    norm = plt.Normalize(vmin=vmin, vmax=vmax)
+    sm = plt.cm.ScalarMappable(cmap=blue_cmap, norm=norm)
+    cbar = fig.colorbar(
+        sm,
+        ax=ax,
+        label="Average onshore wind capacity factor [-]",
+        shrink=0.95,
+        pad=0.0,
+        aspect=50,
+        orientation="horizontal",
+    )
+    from matplotlib.ticker import FormatStrFormatter
+
+    cbar.outline.set_edgecolor("None")
+    cbar.ax.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
+    cbar.set_label("Average onshore wind capacity factor [-]", fontsize=6)
+    cbar.ax.tick_params(labelsize=6)
+
+    legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": 6,
+        "title_fontproperties": {
+            "weight": "bold",
+            "size": 7,
+        },
+        "handlelength": 1.0,
+        "handleheight": 1.0,
+        "handletextpad": 0.4,
+        "labelspacing": 0.25,
+        "borderaxespad": 0.2,
+    }
+
+    size_legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": 6,
+        "title_fontproperties": {
+            "weight": "bold",
+            "size": 7,
+        },
+        "labelspacing": 0.4,
+    }
+
+    all_techs = ['DAC', 'DAC renewable cluster']
+    tech_colors_list = [label_to_colors.get(t, "#cccccc") for t in all_techs]
+    add_legend_patches(
+        ax,
+        tech_colors_list,
+        all_techs,
+        legend_kw={
+            "bbox_to_anchor": (0, -0.10),
+            "ncol": 1,
+            "title": "DAC Captured CO2",
+            **legend_kwargs,
+        },
+    )
+
+    # NOTE: pick sizes appropriate to your CO2 unit scale (e.g. MtCO2)
+    legend_sizes = [0.1, 1]
+    carrier_unit = config_plotting["plotting"]["balance_map"]['co2 stored']["unit"]
+    add_legend_semicircles(
+        ax,
+        [s * geo_scale**2 for s in legend_sizes],
+        [f"{s} {carrier_unit}" for s in legend_sizes],
+        patch_kw={"color": "#666"},
+        legend_kw={
+            "bbox_to_anchor": (0, 1),
+            **size_legend_kwargs,
+        },
+    )
+ 
 
     plt.show()
 
@@ -1420,7 +1918,7 @@ def plot_load_duration_curve(n,tech_dictionary,nodes):
         # print(load_durations.head())
 
 
-        fig,ax=plt.subplots(figsize=(10,5))
+        fig,ax=plt.subplots(figsize=(9,5), layout="constrained")
         load_durations.plot(ax=ax,
                         ylabel='Power [MW]',
                         xlabel= 'hours',
@@ -1447,36 +1945,22 @@ def plot_load_duration_curve(n,tech_dictionary,nodes):
                     colors=color,
                     linestyles="dashed")
             # print (f"{techname} p_nom: {pnoms[techname]} MW")
-            y_line = pnoms[techname]
-            y_offset = 0.003
-
-            # label next to the line
-            ax.text(
-            8000,
-            y_line - y_offset,
-            "p_nom",
-            color=color,
-            va='top',
-            fontsize=10,
-            bbox=dict(
-                boxstyle="round,pad=0.3",
-                facecolor="white",
-                edgecolor=color,
-                alpha=0.8
-            )
-        )
 
 
-        leg = ax.legend(
-            loc='upper left',
-            bbox_to_anchor=(1.02,1),
+        # single legend: the technology curves, followed by one entry
+        # explaining the dashed nominal-power lines
+        handles, labels = ax.get_legend_handles_labels()
+        nominal_power_line = Line2D([0], [0], color='black', linestyle='dashed')
+        handles.append(nominal_power_line)
+        labels.append('Nominal Power')
+
+        ax.legend(
+            handles,
+            labels,
+            loc='center left',
+            bbox_to_anchor=(1.02, 0.5),
             frameon=True,
         )
-
-
-        fig.subplots_adjust(bottom=0.25)
-
-
 
         plt.show()
 
@@ -2040,7 +2524,6 @@ networks_folder=r"results/Noridcs100_2035_industrial_clusters/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())                        
 regions=gdp.read_file(r'resources/Noridcs100_2035_industrial_clusters/all/regions_onshore_base_s_100.geojson').set_index("name")
 
-
 records = []
 for path in sorted(Path(networks_folder).glob("*.nc")):
     wc = parse_wildcards(path)
@@ -2048,7 +2531,9 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0.0) & (df.SELLcap == 0.1)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+
+FT_oil_prices_rc, methanol_prices_rc, FT_oil_prices_average_rc, methanol_prices_average_rc,methanol_cost_shares_rc = compute_ft_and_methanol_prices_renewable_cluster(n)
 
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "charger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
@@ -2068,6 +2553,7 @@ pnoms = plot_cluster_capacities(n, cluster_components, ["DK1 0"])
 plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 plot_methanol_production_solar_cf_colormap(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
+plot_dac_captured_co2_onwind_cf_colormap(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 plot_FT_production_map(n, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 methanol_prices_cluster, average_price_of_methanol_cluster = calculate_price_of_methanol_cluster(n)
 # %%

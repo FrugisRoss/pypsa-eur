@@ -33,7 +33,7 @@ from scripts.plot_power_network import load_projection
 
 label_to_colors = {
     'methanolisation': "#2df7d6",
-    'solid biomass biomass-to-methanol': "#8442f5",
+    'solid biomass biomass-to-methanol': "#36ad0e",
     'H2 Electrolysis': "#187878",
     'solar rooftop': "#ffe204",
     'solar': "#f47b0a",
@@ -47,8 +47,8 @@ label_to_colors = {
     'Sabatier': '#ebb028',
 
     # Renewable cluster variants
-    'methanolisation renewable cluster': '#36ad0e',
-    'H2 Electrolysis renewable cluster': "#42f5d1",
+    'methanolisation renewable cluster': '#EB28B0',
+    'H2 Electrolysis renewable cluster': "#473BF5",
     'solar-hsat renewable cluster': "#870000",
     'solar renewable cluster': "#bff542",
     'battery charger renewable cluster': "#193ade",
