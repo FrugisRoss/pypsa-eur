@@ -1194,7 +1194,7 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
             ax.add_patch(poly)
             theta1 = theta2
 
-    ax.set_title("Methanol Production", fontsize=8)
+    ax.set_title("Methanol Production", fontsize=10)
 
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
     sm = plt.cm.ScalarMappable(cmap=blue_cmap, norm=norm)
@@ -1211,17 +1211,17 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
 
     cbar.outline.set_edgecolor("None")
     cbar.ax.xaxis.set_major_formatter(FormatStrFormatter("%.2f"))
-    cbar.set_label("Average onshore wind capacity factor [-]", fontsize=6)
+    cbar.set_label("Average onshore wind capacity factor [-]", fontsize=9)
     cbar.ax.tick_params(labelsize=6)
 
     legend_kwargs = {
         "loc": "upper left",
         "frameon": False,
         "alignment": "left",
-        "fontsize": 6,
+        "fontsize": 8,
         "title_fontproperties": {
             "weight": "bold",
-            "size": 7,
+            "size": 9,
         },
         "handlelength": 1.0,
         "handleheight": 1.0,
@@ -1234,10 +1234,10 @@ def plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, lab
         "loc": "upper left",
         "frameon": False,
         "alignment": "left",
-        "fontsize": 6,
+        "fontsize": 8,
         "title_fontproperties": {
             "weight": "bold",
-            "size": 7,
+            "size": 9,
         },
         "labelspacing": 0.4,
     }
@@ -1918,11 +1918,11 @@ def plot_load_duration_curve(n,tech_dictionary,nodes):
         # print(load_durations.head())
 
 
-        fig,ax=plt.subplots(figsize=(9,5), layout="constrained")
+        fig,ax=plt.subplots(figsize=(12,5), layout="constrained")
         load_durations.plot(ax=ax,
                         ylabel='Power [MW]',
                         xlabel= 'hours',
-                        title=f"Load Duration Curves for renewable technologies in {node}",
+                        title="Load Duration Curves for renewable technologies",
                         color=[label_to_colors.get(label, "#cccccc")  # fallback color
                                for label in load_durations.columns]
                         )
@@ -1950,9 +1950,10 @@ def plot_load_duration_curve(n,tech_dictionary,nodes):
         # single legend: the technology curves, followed by one entry
         # explaining the dashed nominal-power lines
         handles, labels = ax.get_legend_handles_labels()
+        spacer = Line2D([0], [0], color='none')
         nominal_power_line = Line2D([0], [0], color='black', linestyle='dashed')
-        handles.append(nominal_power_line)
-        labels.append('Nominal Power')
+        handles += [spacer, nominal_power_line]
+        labels += ['', 'Nominal Installed Capacity']
 
         ax.legend(
             handles,
@@ -1960,6 +1961,7 @@ def plot_load_duration_curve(n,tech_dictionary,nodes):
             loc='center left',
             bbox_to_anchor=(1.02, 0.5),
             frameon=True,
+            fontsize=12,
         )
 
         plt.show()
@@ -2531,7 +2533,7 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0.0) & (df.SELLcap == 0.1)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.25) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 
 FT_oil_prices_rc, methanol_prices_rc, FT_oil_prices_average_rc, methanol_prices_average_rc,methanol_cost_shares_rc = compute_ft_and_methanol_prices_renewable_cluster(n)
 

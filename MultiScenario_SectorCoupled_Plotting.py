@@ -123,17 +123,17 @@ def co2_marginal_price(n) -> float:
 def renewable_capacity_cluster(n) -> float:
     """
     Total optimised renewable generator capacity installed in the industrial
-    clusters [MW] for a single loaded network.
+    clusters [GW] for a single loaded network.
     """
     mask = n.generators.index.str.contains("renewable cluster")
-    return n.generators.loc[mask, "p_nom_opt"].sum()
+    return n.generators.loc[mask, "p_nom_opt"].sum() / 1e3
 
 
 # Column name -> function computing that column from a single loaded network.
 NETWORK_METRICS = {
     "CO₂ Captured Cluster [Mtons/year]": co2_captured_cluster,
     "CO₂ Price [€/ton]": co2_marginal_price,
-    "Renewable Capacity Cluster [MW]": renewable_capacity_cluster,
+    "Renewable Capacity Cluster [GW]": renewable_capacity_cluster,
 }
 
 
@@ -184,17 +184,19 @@ def plot_heatmap_buycap_vs_cr(
         index="BUYcap", columns="CR", values=value_col
     ).sort_index(axis=0, ascending=True).sort_index(axis=1, ascending=True)
     fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(pivot, annot=True, fmt=".2f", cmap=cmap, ax=ax)
+    sns.heatmap(pivot, annot=True, fmt=".1f", cmap=cmap, ax=ax, annot_kws={"fontsize": 12})
     ax.invert_yaxis()
-    ax.set_xlabel("CR")
-    ax.set_ylabel("BUYcap")
-    ax.set_xticklabels([f"{float(c):.0%}" for c in pivot.columns])
-    ax.set_yticklabels([f"{float(i):.0%}" for i in pivot.index])
-    ax.collections[0].colorbar.ax.set_ylabel(title, rotation=270, labelpad=15, va="bottom")
+    ax.set_xlabel("CR", fontsize=14)
+    ax.set_ylabel("BUYcap", fontsize=14)
+    ax.set_xticklabels([f"{float(c):.0%}" for c in pivot.columns], fontsize=12)
+    ax.set_yticklabels([f"{float(i):.0%}" for i in pivot.index], fontsize=12)
+    cbar = ax.collections[0].colorbar
+    cbar.ax.set_ylabel(title, rotation=90, labelpad=15, va="bottom", fontsize=14)
+    cbar.ax.tick_params(labelsize=12)
     fig.tight_layout()
 
     if main_title:
-        fig.suptitle(main_title, fontsize=14, y=0.95)
+        fig.suptitle(main_title, fontsize=18, y=0.95)
         fig.tight_layout(rect=[0, 0, 1, 0.97])
 
     return fig, ax
@@ -231,17 +233,19 @@ def plot_heatmap_sellcap_vs_cr(
         index="SELLcap", columns="CR", values=value_col
     ).sort_index(axis=0, ascending=True).sort_index(axis=1, ascending=True)
     fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(pivot, annot=True, fmt=".2f", cmap=cmap, ax=ax)
+    sns.heatmap(pivot, annot=True, fmt=".1f", cmap=cmap, ax=ax, annot_kws={"fontsize": 12})
     ax.invert_yaxis()
-    ax.set_xlabel("CR")
-    ax.set_ylabel("SELLcap")
-    ax.set_xticklabels([f"{float(c):.0%}" for c in pivot.columns])
-    ax.set_yticklabels([f"{float(i):.0%}" for i in pivot.index])
-    ax.collections[0].colorbar.ax.set_ylabel(title, rotation=270, labelpad=15, va="bottom")
+    ax.set_xlabel("CR", fontsize=14)
+    ax.set_ylabel("SELLcap", fontsize=14)
+    ax.set_xticklabels([f"{float(c):.0%}" for c in pivot.columns], fontsize=12)
+    ax.set_yticklabels([f"{float(i):.0%}" for i in pivot.index], fontsize=12)
+    cbar = ax.collections[0].colorbar
+    cbar.ax.set_ylabel(title, rotation=90, labelpad=15, va="bottom", fontsize=14)
+    cbar.ax.tick_params(labelsize=12)
     fig.tight_layout()
 
     if main_title:
-        fig.suptitle(main_title, fontsize=14, y=0.95)
+        fig.suptitle(main_title, fontsize=18, y=0.95)
         fig.tight_layout(rect=[0, 0, 1, 0.97])
 
     return fig, ax
@@ -279,17 +283,19 @@ def plot_heatmap_bothcap_vs_cr(
         index="BOTHcap", columns="CR", values=value_col
     ).sort_index(axis=0, ascending=True).sort_index(axis=1, ascending=True)
     fig, ax = plt.subplots(figsize=(8, 6))
-    sns.heatmap(pivot, annot=True, fmt=".2f", cmap=cmap, ax=ax)
+    sns.heatmap(pivot, annot=True, fmt=".1f", cmap=cmap, ax=ax, annot_kws={"fontsize": 12})
     ax.invert_yaxis()
-    ax.set_xlabel("CR")
-    ax.set_ylabel("BOTHcap")
-    ax.set_xticklabels([f"{float(c):.0%}" for c in pivot.columns])
-    ax.set_yticklabels([f"{float(i):.0%}" for i in pivot.index])
-    ax.collections[0].colorbar.ax.set_ylabel(title, rotation=270, labelpad=15, va="bottom")
+    ax.set_xlabel("CR", fontsize=14)
+    ax.set_ylabel("BOTHcap", fontsize=14)
+    ax.set_xticklabels([f"{float(c):.0%}" for c in pivot.columns], fontsize=12)
+    ax.set_yticklabels([f"{float(i):.0%}" for i in pivot.index], fontsize=12)
+    cbar = ax.collections[0].colorbar
+    cbar.ax.set_ylabel(title, rotation=90, labelpad=15, va="bottom", fontsize=14)
+    cbar.ax.tick_params(labelsize=12)
     fig.tight_layout()
 
     if main_title:
-        fig.suptitle(main_title, fontsize=14, y=0.95)
+        fig.suptitle(main_title, fontsize=18, y=0.95)
         fig.tight_layout(rect=[0, 0, 1, 0.97])
 
     return fig, ax
@@ -374,7 +380,7 @@ def plot_heatmap_two_regions(
         1, 3, figsize=(15, 6), gridspec_kw={"width_ratios": [1, 1, 0.05]}
     )
 
-    sns.heatmap(pivot1, annot=True, fmt=".2f", cmap=cmap, ax=ax1, vmin=vmin, vmax=vmax, cbar=False)
+    sns.heatmap(pivot1, annot=True, fmt=".1f", cmap=cmap, ax=ax1, vmin=vmin, vmax=vmax, cbar=False)
     ax1.invert_yaxis()
     ax1.set_xlabel("CR")
     ax1.set_ylabel(axis)
@@ -383,7 +389,7 @@ def plot_heatmap_two_regions(
     ax1.set_yticklabels(pct_labels(pivot1.index))
 
     sns.heatmap(
-        pivot2, annot=True, fmt=".2f", cmap=cmap, ax=ax2, vmin=vmin, vmax=vmax,
+        pivot2, annot=True, fmt=".1f", cmap=cmap, ax=ax2, vmin=vmin, vmax=vmax,
         cbar=True, cbar_ax=cax,
     )
     ax2.invert_yaxis()
@@ -439,9 +445,9 @@ fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", c
 fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, sellcap_range=(0, 0.4), title="CO₂ Marginal Price [€/ton]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
 # fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Marginal Price [€/ton]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
 
-fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [MW]", "Greens", cr_range=None, buycap_range=(0, 1), title="Renewable Capacity in Clusters [MW]", main_title="Iberian Peninsula - SELLcap=0%, BOTHcap=0%")
-fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [MW]", "Greens", cr_range=None, sellcap_range=(0, 0.4), title="Renewable Capacity in Clusters [MW]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
-# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [MW]", "Greens", cr_range=None, bothcap_range=(0, 0.5), title="Renewable Capacity in Clusters [MW]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, buycap_range=(0, 1), title="Renewable Capacity in Clusters [GW]", main_title="Iberian Peninsula - SELLcap=0%, BOTHcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, sellcap_range=(0, 0.4), title="Renewable Capacity in Clusters [GW]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
+# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, bothcap_range=(0, 0.5), title="Renewable Capacity in Clusters [GW]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
 
 
 # %%
@@ -458,9 +464,9 @@ fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", c
 fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, sellcap_range=(0, 0.4), title="CO₂ Marginal Price [€/ton]", main_title="Nordic Countries - BUYcap=0%")
 # fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Marginal Price [€/ton]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
 
-fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [MW]", "Greens", cr_range=None, buycap_range=(0, 1), title="Renewable Capacity in Clusters [MW]", main_title="Nordic Countries - SELLcap=0%")
-fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [MW]", "Greens", cr_range=None, sellcap_range=(0, 0.4), title="Renewable Capacity in Clusters [MW]", main_title="Nordics Countries - BUYcap=0%")
-# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [MW]", "Greens", cr_range=None, bothcap_range=(0, 0.5), title="Renewable Capacity in Clusters [MW]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, buycap_range=(0, 1), title="Renewable Capacity in Clusters [GW]", main_title="Nordic Countries - SELLcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, sellcap_range=(0, 0.4), title="Renewable Capacity in Clusters [GW]", main_title="Nordics Countries - BUYcap=0%")
+# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, bothcap_range=(0, 0.5), title="Renewable Capacity in Clusters [GW]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
 
 #%%
 # Combined Iberian Peninsula + Nordics heatmaps, one figure per metric, shared color scale/legend.
@@ -469,7 +475,7 @@ fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [MW]"
 for value_col, cmap in [
     ("CO₂ Captured Cluster [Mtons/year]", "Purples"),
     ("CO₂ Price [€/ton]", "Reds"),
-    ("Renewable Capacity Cluster [MW]", "Greens"),
+    ("Renewable Capacity Cluster [GW]", "Greens"),
 ]:
     fig, axes = plot_heatmap_two_regions(
         df_all,
