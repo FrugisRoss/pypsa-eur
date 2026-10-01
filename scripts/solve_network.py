@@ -1402,7 +1402,8 @@ def extra_functionality(
     if EQ_o := constraints["EQ"]:
         add_EQ_constraints(n, EQ_o.replace("EQ", ""))
 
-    add_cluster_renewables_potential_constraint(n, config)
+    if config["industrial_cluster"]["enable"]:
+        add_cluster_renewables_potential_constraint(n, config)
 
     if {"solar-hsat", "solar"}.issubset(
         config["electricity"]["renewable_carriers"]
@@ -1411,12 +1412,13 @@ def extra_functionality(
     ):
         add_solar_potential_constraints(n, config)
 
-    if config["industrial_cluster"]["ongrid_buy"]:
-        add_cluster_grid_connection_buy_constraint(n, config)
-    if config["industrial_cluster"]["ongrid_sell"]:
-        add_cluster_grid_connection_sell_constraint(n, config)
-    if config["industrial_cluster"]["ongrid_both"]:
-        add_cluster_grid_connection_both_constraint(n, config)
+    if config["industrial_cluster"]["enable"]:
+        if config["industrial_cluster"]["ongrid_buy"]:
+            add_cluster_grid_connection_buy_constraint(n, config)
+        if config["industrial_cluster"]["ongrid_sell"]:
+            add_cluster_grid_connection_sell_constraint(n, config)
+        if config["industrial_cluster"]["ongrid_both"]:
+            add_cluster_grid_connection_both_constraint(n, config)
 
     if n.config.get("sector", {}).get("tes", False):
         if n.buses.index.str.contains(

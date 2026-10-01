@@ -1446,6 +1446,7 @@ rule prepare_sector_network:
 rule add_industrial_cluster:
     params:
         countries=config_provider("countries"),
+        enable=config_provider("industrial_cluster", "enable"),
         cluster_size=config_provider("industrial_cluster", "cluster_size"),
         cost_reduction=config_provider("industrial_cluster", "cost_reduction"),
         ongrid_buy=config_provider("industrial_cluster", "ongrid_buy"),

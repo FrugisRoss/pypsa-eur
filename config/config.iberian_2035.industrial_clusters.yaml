@@ -39,6 +39,7 @@ scenario:
   opts:
   - ''
   sector_opts:
+    - '3h'
     # CR+0
     - '3h-CR+0-onSELL-SELLcap+0'
     - '3h-CR+0-onSELL-SELLcap+0p1'
@@ -1003,6 +1004,7 @@ industry:
   oil_refining_emissions: 0.013
 
 industrial_cluster:
+  enable: false # whether to add industrial clusters to the network; if false, the network from prepare_sector_network is solved unchanged
   cluster_size: 1000 # MW, target renewable capacity per technology bundled into a cluster at each node
   cost_reduction: 0.5 # fraction of capital cost reduction applied to cluster equipment (batteries, generators)
   ongrid_buy: false # whether the cluster is connected to the main electricity grid TO BUY

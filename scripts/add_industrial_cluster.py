@@ -580,31 +580,36 @@ if __name__ == "__main__":
 
     n = pypsa.Network(snakemake.input.network)
 
-    nyears = n.snapshot_weightings.generators.sum() / 8760
+    if snakemake.params.enable:
+        nyears = n.snapshot_weightings.generators.sum() / 8760
 
-    costs = load_costs(
-        snakemake.input.costs,
-        snakemake.params.costs,
-        nyears=nyears,
-    )
+        costs = load_costs(
+            snakemake.input.costs,
+            snakemake.params.costs,
+            nyears=nyears,
+        )
 
-    nodes = n.buses.loc[
-        n.buses.index.str[:2].isin(snakemake.params.countries)
-        & (n.buses["carrier"] == "AC")
-    ].index.tolist()
+        nodes = n.buses.loc[
+            n.buses.index.str[:2].isin(snakemake.params.countries)
+            & (n.buses["carrier"] == "AC")
+        ].index.tolist()
 
-    n = add_renewable_cluster(
-        n,
-        nodes,
-        cluster_size=snakemake.params.cluster_size,
-        cluster_cost_reduction=snakemake.params.cost_reduction,
-        renewables=set(snakemake.params.renewables),
-        nodes_with_clusters=nodes,
-        ongrid_buy=snakemake.params.ongrid_buy,
-        ongrid_sell=snakemake.params.ongrid_sell,
-        ongrid_both=snakemake.params.ongrid_both,
-        costs=costs,
-    )
+        n = add_renewable_cluster(
+            n,
+            nodes,
+            cluster_size=snakemake.params.cluster_size,
+            cluster_cost_reduction=snakemake.params.cost_reduction,
+            renewables=set(snakemake.params.renewables),
+            nodes_with_clusters=nodes,
+            ongrid_buy=snakemake.params.ongrid_buy,
+            ongrid_sell=snakemake.params.ongrid_sell,
+            ongrid_both=snakemake.params.ongrid_both,
+            costs=costs,
+        )
+    else:
+        logger.info(
+            "Industrial clusters are disabled, passing the network on unchanged."
+        )
 
     n.meta = dict(snakemake.config, **dict(wildcards=dict(snakemake.wildcards)))
     n.export_to_netcdf(snakemake.output[0])
