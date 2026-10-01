@@ -104,6 +104,8 @@ def build_industry_sector_ratios_intermediate():
 
     fraction_future = get(params["sector_ratios_fraction_future"], year)
 
+    emission_rows = ["process emission", "process emission from feedstock"]
+
     intermediate_sector_ratios = {}
     for ct, group in today_sector_ratios.T.groupby(level=0):
         today_sector_ratios_ct = group.droplevel(0).T.reindex_like(future_sector_ratios)
@@ -111,9 +113,12 @@ def build_industry_sector_ratios_intermediate():
         today_sector_ratios_ct.loc[:, missing_mask] = future_sector_ratios.loc[
             :, missing_mask
         ]
-        today_sector_ratios_ct.loc[:, ~missing_mask] = today_sector_ratios_ct.loc[
-            :, ~missing_mask
-        ].fillna(future_sector_ratios)
+        # fill missing process emissions with future values, missing carriers with 0
+        today_sector_ratios_ct.loc[:, ~missing_mask] = (
+            today_sector_ratios_ct.loc[:, ~missing_mask]
+            .fillna(future_sector_ratios.loc[emission_rows])
+            .fillna(0)
+        )
         intermediate_sector_ratios[ct] = (
             today_sector_ratios_ct * (1 - fraction_future)
             + future_sector_ratios * fraction_future
