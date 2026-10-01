@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Noridcs100_2050_78ccslimit"
+  prefix: "Noridcs100_2035_industrial_clusters_all3h"
   name: "all"
   scenarios:
     enable: false
@@ -39,9 +39,121 @@ scenario:
   opts:
   - ''
   sector_opts:
-  - '3h'
+    # CR+0
+    - '3h-CR+0-onSELL-SELLcap+0'
+    - '3h-CR+0-onSELL-SELLcap+0p1'
+    - '3h-CR+0-onSELL-SELLcap+0p2'
+    - '3h-CR+0-onSELL-SELLcap+0p3'
+    - '3h-CR+0-onSELL-SELLcap+0p4'
+    - '3h-CR+0-onSELL-SELLcap+0p5'
+    - '3h-CR+0-onBUY-BUYcap+0'
+    - '3h-CR+0-onBUY-BUYcap+0p25'
+    - '3h-CR+0-onBUY-BUYcap+0p5'
+    - '3h-CR+0-onBUY-BUYcap+0p75'
+    - '3h-CR+0-onBUY-BUYcap+1'
+    - '3h-CR+0-onBOTH-BOTHcap+0'
+    - '3h-CR+0-onBOTH-BOTHcap+0p1'
+    - '3h-CR+0-onBOTH-BOTHcap+0p2'
+    - '3h-CR+0-onBOTH-BOTHcap+0p3'
+    - '3h-CR+0-onBOTH-BOTHcap+0p4'
+    - '3h-CR+0-onBOTH-BOTHcap+0p5'
+
+    # CR+0.1
+    - '3h-CR+0p1-onSELL-SELLcap+0'
+    - '3h-CR+0p1-onSELL-SELLcap+0p1'
+    - '3h-CR+0p1-onSELL-SELLcap+0p2'
+    - '3h-CR+0p1-onSELL-SELLcap+0p3'
+    - '3h-CR+0p1-onSELL-SELLcap+0p4'
+    - '3h-CR+0p1-onSELL-SELLcap+0p5'
+    - '3h-CR+0p1-onBUY-BUYcap+0'
+    - '3h-CR+0p1-onBUY-BUYcap+0p25'
+    - '3h-CR+0p1-onBUY-BUYcap+0p5'
+    - '3h-CR+0p1-onBUY-BUYcap+0p75'
+    - '3h-CR+0p1-onBUY-BUYcap+1'
+    - '3h-CR+0p1-onBOTH-BOTHcap+0'
+    - '3h-CR+0p1-onBOTH-BOTHcap+0p1'
+    - '3h-CR+0p1-onBOTH-BOTHcap+0p2'
+    - '3h-CR+0p1-onBOTH-BOTHcap+0p3'
+    - '3h-CR+0p1-onBOTH-BOTHcap+0p4'
+    - '3h-CR+0p1-onBOTH-BOTHcap+0p5'
+
+    # CR+0.2
+    - '3h-CR+0p2-onSELL-SELLcap+0'
+    - '3h-CR+0p2-onSELL-SELLcap+0p1'
+    - '3h-CR+0p2-onSELL-SELLcap+0p2'
+    - '3h-CR+0p2-onSELL-SELLcap+0p3'
+    - '3h-CR+0p2-onSELL-SELLcap+0p4'
+    - '3h-CR+0p2-onSELL-SELLcap+0p5'
+    - '3h-CR+0p2-onBUY-BUYcap+0'
+    - '3h-CR+0p2-onBUY-BUYcap+0p25'
+    - '3h-CR+0p2-onBUY-BUYcap+0p5'
+    - '3h-CR+0p2-onBUY-BUYcap+0p75'
+    - '3h-CR+0p2-onBUY-BUYcap+1'
+    - '3h-CR+0p2-onBOTH-BOTHcap+0'
+    - '3h-CR+0p2-onBOTH-BOTHcap+0p1'
+    - '3h-CR+0p2-onBOTH-BOTHcap+0p2'
+    - '3h-CR+0p2-onBOTH-BOTHcap+0p3'
+    - '3h-CR+0p2-onBOTH-BOTHcap+0p4'
+    - '3h-CR+0p2-onBOTH-BOTHcap+0p5'
+
+    # CR+0.3
+    - '3h-CR+0p3-onSELL-SELLcap+0'
+    - '3h-CR+0p3-onSELL-SELLcap+0p1'
+    - '3h-CR+0p3-onSELL-SELLcap+0p2'
+    - '3h-CR+0p3-onSELL-SELLcap+0p3'
+    - '3h-CR+0p3-onSELL-SELLcap+0p4'
+    - '3h-CR+0p3-onSELL-SELLcap+0p5'
+    - '3h-CR+0p3-onBUY-BUYcap+0'
+    - '3h-CR+0p3-onBUY-BUYcap+0p25'
+    - '3h-CR+0p3-onBUY-BUYcap+0p5'
+    - '3h-CR+0p3-onBUY-BUYcap+0p75'
+    - '3h-CR+0p3-onBUY-BUYcap+1'
+    - '3h-CR+0p3-onBOTH-BOTHcap+0'
+    - '3h-CR+0p3-onBOTH-BOTHcap+0p1'
+    - '3h-CR+0p3-onBOTH-BOTHcap+0p2'
+    - '3h-CR+0p3-onBOTH-BOTHcap+0p3'
+    - '3h-CR+0p3-onBOTH-BOTHcap+0p4'
+    - '3h-CR+0p3-onBOTH-BOTHcap+0p5'
+
+    # CR+0.4
+    - '3h-CR+0p4-onSELL-SELLcap+0'
+    - '3h-CR+0p4-onSELL-SELLcap+0p1'
+    - '3h-CR+0p4-onSELL-SELLcap+0p2'
+    - '3h-CR+0p4-onSELL-SELLcap+0p3'
+    - '3h-CR+0p4-onSELL-SELLcap+0p4'
+    - '3h-CR+0p4-onSELL-SELLcap+0p5'
+    - '3h-CR+0p4-onBUY-BUYcap+0'
+    - '3h-CR+0p4-onBUY-BUYcap+0p25'
+    - '3h-CR+0p4-onBUY-BUYcap+0p5'
+    - '3h-CR+0p4-onBUY-BUYcap+0p75'
+    - '3h-CR+0p4-onBUY-BUYcap+1'
+    - '3h-CR+0p4-onBOTH-BOTHcap+0'
+    - '3h-CR+0p4-onBOTH-BOTHcap+0p1'
+    - '3h-CR+0p4-onBOTH-BOTHcap+0p2'
+    - '3h-CR+0p4-onBOTH-BOTHcap+0p3'
+    - '3h-CR+0p4-onBOTH-BOTHcap+0p4'
+    - '3h-CR+0p4-onBOTH-BOTHcap+0p5'
+
+    # CR+0.5
+    - '3h-CR+0p5-onSELL-SELLcap+0'
+    - '3h-CR+0p5-onSELL-SELLcap+0p1'
+    - '3h-CR+0p5-onSELL-SELLcap+0p2'
+    - '3h-CR+0p5-onSELL-SELLcap+0p3'
+    - '3h-CR+0p5-onSELL-SELLcap+0p4'
+    - '3h-CR+0p5-onSELL-SELLcap+0p5'
+    - '3h-CR+0p5-onBUY-BUYcap+0'
+    - '3h-CR+0p5-onBUY-BUYcap+0p25'
+    - '3h-CR+0p5-onBUY-BUYcap+0p5'
+    - '3h-CR+0p5-onBUY-BUYcap+0p75'
+    - '3h-CR+0p5-onBUY-BUYcap+1'
+    - '3h-CR+0p5-onBOTH-BOTHcap+0'
+    - '3h-CR+0p5-onBOTH-BOTHcap+0p1'
+    - '3h-CR+0p5-onBOTH-BOTHcap+0p2'
+    - '3h-CR+0p5-onBOTH-BOTHcap+0p3'
+    - '3h-CR+0p5-onBOTH-BOTHcap+0p4'
+    - '3h-CR+0p5-onBOTH-BOTHcap+0p5'
   planning_horizons:
-  - '2050'
+  - '2035'
 
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#countries
@@ -78,7 +190,7 @@ co2_budget:
   2020: 0.720 # average emissions of 2019 to 2021 relative to 1990, CO2 excl LULUCF, EEA data, European Environment Agency. (2023a). Annual European Union greenhouse gas inventory 1990–2021 and inventory report 2023 - CRF Table. https://unfccc.int/documents/627830
   2025: 0.648 # With additional measures (WAM) projection, CO2 excl LULUCF, European Environment Agency. (2023e). Member States’ greenhouse gas (GHG) emission projections 2023. https://www.eea.europa.eu/en/datahub/datahubitem-view/4b8d94a4-aed7-4e67-a54c-0623a50f48e8
   2030: 0.450 # 55% reduction by 2030 (Ff55)
-  2035: 0.250
+  2035: 0.2877
   2040: 0.100 # 90% by 2040
   2045: 0.050
   2050: 0.000 # climate-neutral by 2050
@@ -131,7 +243,7 @@ electricity:
     enable: false
     by_country: false
 
-  transmission_limit: v1.25
+  transmission_limit: v1.0
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#atlite
 atlite:
@@ -608,7 +720,7 @@ sector:
     2020: 0
     2025: 0
     2030: 0.15
-    2035: 0.35
+    2035: 0.25
     2040: 0.55
     2045: 0.8
     2050: 1
@@ -616,7 +728,7 @@ sector:
     2020: 1
     2025: 1
     2030: 0.85
-    2035: 0.65
+    2035: 0.75
     2040: 0.45
     2045: 0.2
     2050: 0
@@ -688,7 +800,7 @@ sector:
     2020: 0
     2025: 0
     2030: 40
-    2035: 35
+    2035: 33
     2040: 180
     2045: 250
     2050: 78
@@ -756,7 +868,7 @@ sector:
   biomass_spatial: true
   biomass_transport: true
   biogas_upgrading: true
-  biogas_upgrading_cc: false
+  biogas_upgrading_cc: true
   conventional_generation:
     OCGT: gas
     CCGT: gas
@@ -894,6 +1006,17 @@ industry:
   reference_year: 2019
   oil_refining_emissions: 0.013
 
+industrial_cluster:
+  cluster_size: 1000 # MW, target renewable capacity per technology bundled into a cluster at each node
+  cost_reduction: 0.5 # fraction of capital cost reduction applied to cluster equipment (batteries, generators)
+  ongrid_buy: false # whether the cluster is connected to the main electricity grid TO BUY
+  ongrid_sell: false # whether the cluster is connected to the main electricity grid TO SELL
+  ongrid_both: false # whether the cluster is connected to the main electricity grid TO BUY AND SELL
+  #eventually add a line here that allows to specify whether the cluster is connected to the main electricity grid for both buying and selling WITH or WITHOUT a limit on the capacity of the connection
+  grid_connection_capacity_buy: 1 # ratio of buy-side grid connection link capacity to the cluster's total renewable generator capacity
+  grid_connection_capacity_sell: 1 # ratio capping the sell-side grid connection link capacity relative to the cluster's total renewable generator capacity
+  grid_connection_capacity_both: 1 # ratio capping the both-side grid connection link capacity relative to the cluster's total renewable generator capacity
+  renewables: ["solar", "solar-hsat", "onwind"] # renewable carriers considered when assembling a cluster's generators
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#costs
 costs:
