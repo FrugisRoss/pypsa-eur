@@ -5,7 +5,7 @@
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#plotting
 plotting:
   map:
-    boundaries: [-15,12, 35,48] #iberic    
+    #boundaries: [-15,12, 35,48] #iberic    
     boundaries: [-10,28, 46,73] #nordic
     geomap_colors:
       ocean: white

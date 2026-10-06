@@ -2034,123 +2034,17 @@ def plot_cluster_capacities(n, tech_dictionary, nodes):
     return pnoms
 
 
-def plot_cluster_curtailment(n, node):
-    """Plot the curtailment of every renewable cluster generator at ``node``.
 
-    A generator is considered if its name contains both ``node`` and
-    ``"renewable cluster"`` and if its optimised capacity ``p_nom_opt`` exceeds
-    1 MW. For each such generator the curtailment time series is computed as
-
-        curtailment = (expected_production - actual_production) * snapshot_weighting
-        expected_production = p_nom_opt * p_max_pu
-        actual_production    = p
-
-    Three figures are produced per generator (full year, January only and July
-    only): the actual production as a filled area in the carrier's colour from
-    ``label_to_colors``, with the curtailment stacked on top as a grey band up
-    to the expected production. The full (hourly) curtailment time series are
-    returned as a DataFrame with one column per generator.
-    """
-
-    generators = n.generators.index[
-        n.generators.index.str.contains(node)
-        & n.generators.index.str.contains("renewable cluster")
-    ]
-
-    curtailments = pd.DataFrame(index=n.snapshots)
-
-    for generator in generators:
-        if not n.generators.loc[
-            n.generators.index.str.contains(generator), "p_nom_opt"
-        ].gt(1).any():
-            continue
-
-        expected_production = n.generators.loc[
-            n.generators.index.str.contains(generator), "p_nom_opt"
-        ].iloc[0] * n.generators_t.p_max_pu.loc[
-            :, n.generators_t.p_max_pu.columns.str.contains(generator)
-        ].iloc[:, 0]
-
-        actual_production = n.generators_t.p.loc[
-            :, n.generators_t.p.columns.str.contains(generator)
-        ].iloc[:, 0]
-
-        weighting = n.snapshot_weightings.generators
-        expected_production = expected_production * weighting
-        actual_production = actual_production * weighting
-        curtailment = expected_production - actual_production
-        curtailments[generator] = curtailment
-
-        carrier = n.generators.loc[
-            n.generators.index.str.contains(generator), "carrier"
-        ].iloc[0]
-        color = label_to_colors.get(f"{carrier} renewable cluster", "#cccccc")
-
-        def plot_window(mask, period):
-            expected = expected_production[mask]
-            actual = actual_production[mask]
-            if expected.empty:
-                return
-
-            fig, ax = plt.subplots(figsize=(10, 5))
-            x = actual.index
-            ax.fill_between(
-                x, 0.0, actual,
-                color=color, alpha=0.7, linewidth=0,
-                label="Actual production",
-            )
-            ax.fill_between(
-                x, actual, expected,
-                color="grey", alpha=0.5, linewidth=0,
-                label="Curtailment",
-            )
-            ax.set_ylabel("Energy [MWh]")
-            ax.set_xlabel("snapshot")
-            ax.set_title(f"{generator} curtailment ({period})")
-            ax.set_ylim(bottom=0)
-            ax.margins(x=0)
-            ax.legend(loc="upper right", frameon=True)
-            fig.subplots_adjust(bottom=0.2)
-            plt.show()
-
-        month = expected_production.index.month
-        plot_window(slice(None), "full year")
-        plot_window(month == 1, "January")
-        plot_window(month == 7, "July")
-
-    return curtailments
 
 
 def plot_cluster_monthly_curtailment_share(n, node):
-    """Plot monthly curtailment as a share of potential production per cluster generator.
 
-    Generator selection mirrors :func:`plot_cluster_curtailment`: a generator is
-    considered if its name contains both ``node`` and ``"renewable cluster"`` and
-    if its optimised capacity ``p_nom_opt`` exceeds 1 MW.
-
-    For every calendar month the following weighted energy sums are computed
-    (weighting by ``n.snapshot_weightings.generators`` so non-uniform snapshot
-    spacing is respected)::
-
-        potential_production = sum(p_nom_opt * p_max_pu * weighting)
-        actual_production    = sum(p * weighting)
-        produced_share       = actual_production / potential_production
-        curtailed_share      = 1 - produced_share
-
-    One figure is produced per generator: a stacked bar per month whose total
-    height is always 100 % of the potential production. The lower segment is the
-    share actually produced, drawn in the carrier colour from ``label_to_colors``;
-    the upper segment is the curtailed share, drawn in grey. Months with no
-    potential production are shown as empty (zero-height) bars.
-
-    Returns a DataFrame indexed by month number (1-12) with one column per
-    generator holding the curtailed share (a fraction between 0 and 1).
-    """
 
     generators = n.generators.index[
         n.generators.index.str.contains(node)
         & n.generators.index.str.contains("renewable cluster")
     ]
+    generators = generators[n.generators.loc[generators, "p_nom_opt"].gt(1)]
 
     month_labels = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -2158,181 +2052,64 @@ def plot_cluster_monthly_curtailment_share(n, node):
     ]
     months = list(range(1, 13))
 
-    curtailed_shares = pd.DataFrame(index=months)
-    curtailed_shares.index.name = "month"
+    if generators.empty:
+        return pd.Series(0.0, index=pd.Index(months, name="month"), name=node)
 
     weighting = n.snapshot_weightings.generators
     snapshot_month = n.snapshots.month
 
-    for generator in generators:
-        if not n.generators.loc[
-            n.generators.index.str.contains(generator), "p_nom_opt"
-        ].gt(1).any():
-            continue
+    expected_production = (
+        n.generators.loc[generators, "p_nom_opt"]
+        * n.get_switchable_as_dense("Generator", "p_max_pu")[generators]
+    ).mul(weighting, axis=0)
+    actual_production = n.generators_t.p[generators].mul(weighting, axis=0)
 
-        expected_production = n.generators.loc[
-            n.generators.index.str.contains(generator), "p_nom_opt"
-        ].iloc[0] * n.generators_t.p_max_pu.loc[
-            :, n.generators_t.p_max_pu.columns.str.contains(generator)
-        ].iloc[:, 0]
+    # total over all generators of the node
+    potential_by_month = (
+        expected_production.groupby(snapshot_month).sum()
+        .reindex(months, fill_value=0.0)
+        .sum(axis=1)
+    )
+    actual_by_month = (
+        actual_production.groupby(snapshot_month).sum()
+        .reindex(months, fill_value=0.0)
+        .sum(axis=1)
+    )
 
-        actual_production = n.generators_t.p.loc[
-            :, n.generators_t.p.columns.str.contains(generator)
-        ].iloc[:, 0]
+    produced_share = actual_by_month.div(potential_by_month).fillna(0.0)
+    curtailed_share = (
+        (1.0 - produced_share).clip(0.0, 1.0)
+    )
+    curtailed_share.index.name = "month"
+    curtailed_share.name = node
 
-        expected_production = expected_production * weighting
-        actual_production = actual_production * weighting
+    fig, ax = plt.subplots(figsize=(10, 5))
+    x = np.arange(len(months))
+    ax.bar(
+        x, produced_share * 100.0,
+        color="darkblue", width=0.8, linewidth=0,
+        label="Produced",
+    )
+    ax.bar(
+        x, curtailed_share * 100.0,
+        bottom=produced_share * 100.0,
+        color="grey", alpha=0.5, width=0.8, linewidth=0,
+        label="Curtailment",
+    )
+    ax.set_ylabel("Share of potential production [%]")
+    ax.set_xlabel("month")
+    ax.set_title(f"{node} renewable cluster monthly curtailment share")
+    ax.set_xticks(x)
+    ax.set_xticklabels(month_labels)
+    ax.set_ylim(0, 100)
+    ax.margins(x=0.01)
+    ax.legend(loc="upper right", frameon=True)
+    fig.subplots_adjust(bottom=0.2)
+    plt.show()
 
-        potential_by_month = expected_production.groupby(snapshot_month).sum()
-        actual_by_month = actual_production.groupby(snapshot_month).sum()
-
-        potential_by_month = potential_by_month.reindex(months, fill_value=0.0)
-        actual_by_month = actual_by_month.reindex(months, fill_value=0.0)
-
-        with np.errstate(divide="ignore", invalid="ignore"):
-            produced_share = np.where(
-                potential_by_month > 0,
-                actual_by_month / potential_by_month,
-                0.0,
-            )
-        produced_share = pd.Series(produced_share, index=months).clip(0.0, 1.0)
-        curtailed_share = pd.Series(
-            np.where(potential_by_month > 0, 1.0 - produced_share, 0.0),
-            index=months,
-        ).clip(0.0, 1.0)
-
-        curtailed_shares[generator] = curtailed_share
-
-        carrier = n.generators.loc[
-            n.generators.index.str.contains(generator), "carrier"
-        ].iloc[0]
-        color = label_to_colors.get(f"{carrier} renewable cluster", "#cccccc")
-
-        fig, ax = plt.subplots(figsize=(10, 5))
-        x = np.arange(len(months))
-        ax.bar(
-            x, produced_share * 100.0,
-            color=color, width=0.8, linewidth=0,
-            label="Produced",
-        )
-        ax.bar(
-            x, curtailed_share * 100.0,
-            bottom=produced_share * 100.0,
-            color="grey", alpha=0.5, width=0.8, linewidth=0,
-            label="Curtailment",
-        )
-        ax.set_ylabel("Share of potential production [%]")
-        ax.set_xlabel("month")
-        ax.set_title(f"{generator} monthly curtailment share")
-        ax.set_xticks(x)
-        ax.set_xticklabels(month_labels)
-        ax.set_ylim(0, 100)
-        ax.margins(x=0.01)
-        ax.legend(loc="upper right", frameon=True)
-        fig.subplots_adjust(bottom=0.2)
-        plt.show()
-
-    return curtailed_shares
+    return curtailed_share
 
 
-def plot_cluster_monthly_curtailment_absolute(n, node):
-    """Plot monthly curtailment in absolute energy terms per cluster generator.
-
-    This is the absolute-energy counterpart of
-    :func:`plot_cluster_monthly_curtailment_share`. Generator selection and the
-    weighted monthly energy sums are identical; only the plotted quantity
-    differs. For every calendar month::
-
-        potential_production = sum(p_nom_opt * p_max_pu * weighting)
-        actual_production    = sum(p * weighting)
-        curtailment          = potential_production - actual_production
-
-    One figure is produced per generator: a stacked bar per month whose total
-    height is the potential production in MWh. The lower segment is the energy
-    actually produced, drawn in the carrier colour from ``label_to_colors``; the
-    upper segment is the curtailed energy, drawn in grey.
-
-    Returns a DataFrame indexed by month number (1-12) with one column per
-    generator holding the curtailed energy in MWh.
-    """
-
-    generators = n.generators.index[
-        n.generators.index.str.contains(node)
-        & n.generators.index.str.contains("renewable cluster")
-    ]
-
-    month_labels = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ]
-    months = list(range(1, 13))
-
-    curtailment_energy = pd.DataFrame(index=months)
-    curtailment_energy.index.name = "month"
-
-    weighting = n.snapshot_weightings.generators
-    snapshot_month = n.snapshots.month
-
-    for generator in generators:
-        if not n.generators.loc[
-            n.generators.index.str.contains(generator), "p_nom_opt"
-        ].gt(1).any():
-            continue
-
-        expected_production = n.generators.loc[
-            n.generators.index.str.contains(generator), "p_nom_opt"
-        ].iloc[0] * n.generators_t.p_max_pu.loc[
-            :, n.generators_t.p_max_pu.columns.str.contains(generator)
-        ].iloc[:, 0]
-
-        actual_production = n.generators_t.p.loc[
-            :, n.generators_t.p.columns.str.contains(generator)
-        ].iloc[:, 0]
-
-        expected_production = expected_production * weighting
-        actual_production = actual_production * weighting
-
-        potential_by_month = expected_production.groupby(snapshot_month).sum()
-        actual_by_month = actual_production.groupby(snapshot_month).sum()
-
-        potential_by_month = potential_by_month.reindex(months, fill_value=0.0)
-        actual_by_month = actual_by_month.reindex(months, fill_value=0.0)
-
-        produced_by_month = actual_by_month.clip(lower=0.0)
-        curtailed_by_month = (potential_by_month - produced_by_month).clip(lower=0.0)
-
-        curtailment_energy[generator] = curtailed_by_month
-
-        carrier = n.generators.loc[
-            n.generators.index.str.contains(generator), "carrier"
-        ].iloc[0]
-        color = label_to_colors.get(f"{carrier} renewable cluster", "#cccccc")
-
-        fig, ax = plt.subplots(figsize=(10, 5))
-        x = np.arange(len(months))
-        ax.bar(
-            x, produced_by_month.values,
-            color=color, width=0.8, linewidth=0,
-            label="Produced",
-        )
-        ax.bar(
-            x, curtailed_by_month.values,
-            bottom=produced_by_month.values,
-            color="grey", alpha=0.5, width=0.8, linewidth=0,
-            label="Curtailment",
-        )
-        ax.set_ylabel("Energy [MWh]")
-        ax.set_xlabel("month")
-        ax.set_title(f"{generator} monthly curtailment")
-        ax.set_xticks(x)
-        ax.set_xticklabels(month_labels)
-        ax.set_ylim(bottom=0)
-        ax.margins(x=0.01)
-        ax.legend(loc="upper right", frameon=True)
-        fig.subplots_adjust(bottom=0.2)
-        plt.show()
-
-    return curtailment_energy
 
 
 def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None):
@@ -2415,7 +2192,7 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
                     el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)*h_per_snapshot
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif f"{node} electricity renewable cluster back"==links:
-                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)*h_per_snapshot
+                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/10**3)*h_per_snapshot
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif f"{node} electricity renewable cluster both"==links:
                     # bidirectional grid link carries both signs, which breaks the
@@ -2468,7 +2245,7 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
         ax.set_xlim(start_date, end_date)
 
 
-        ax.set_ylabel("Power [GW]")
+        ax.set_ylabel("Power [GWh]")
         ax.set_title(f"Electricity Production and Consumption in the Cluster of {node}")
         ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=True)
         figure.tight_layout()
@@ -2476,7 +2253,7 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
     return el_balance_cluster
 
 #%%
-networks_folder=r"results/Iberic40_2035_industrial_clusters/all/networks"
+networks_folder=r"results/Iberic40_2035_industrial_clusters_all3h/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
 regions=gdp.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
 
@@ -2522,7 +2299,7 @@ methanol_prices_cluster, average_price_of_methanol_cluster = calculate_price_of_
 
 #%%
 
-networks_folder=r"results/Noridcs100_2035_industrial_clusters/all/networks"
+networks_folder=r"results/Noridcs100_2035_industrial_clusters_all3h/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())                        
 regions=gdp.read_file(r'resources/Noridcs100_2035_industrial_clusters/all/regions_onshore_base_s_100.geojson').set_index("name")
 
@@ -2544,13 +2321,14 @@ cluster_components = (
 load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK1 0"])
 pnoms = plot_cluster_capacities(n, cluster_components, ["DK1 0"])
 
-# cluster_curtailments = plot_cluster_curtailment(n, "DK0 0")
-# cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "DK0 0")
-# cluster_curtailment_energy = plot_cluster_monthly_curtailment_absolute(n, "DK0 0")
 
-# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 0"],start_date='01-07-2013', end_date='01-14-2013')
+cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "DK1 0")
 
-# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 0"],start_date='07-07-2013', end_date='07-14-2013')
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='01-1-2013', end_date='01-7-2013')
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='07-07-2013', end_date='07-14-2013')
+
+#%%
 
 plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 plot_methanol_production_onwind_cf_colormap(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
@@ -2559,3 +2337,16 @@ plot_dac_captured_co2_onwind_cf_colormap(n, regions, config_plotting, label_to_c
 plot_FT_production_map(n, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 methanol_prices_cluster, average_price_of_methanol_cluster = calculate_price_of_methanol_cluster(n)
 # %%
+
+networks_folder=r"results/Noridcs100_2035_industrial_clusters/all/networks"
+config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())                        
+regions=gdp.read_file(r'resources/Noridcs100_2035_industrial_clusters/all/regions_onshore_base_s_100.geojson').set_index("name")
+
+records = []
+for path in sorted(Path(networks_folder).glob("*.nc")):
+    wc = parse_wildcards(path)
+    records.append({**wc, "path": path})
+
+df = pd.DataFrame(records)
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.0) & (df.SELLcap == 0.1)  & (df.BOTHcap == 0.0), "path"].iloc[0]))

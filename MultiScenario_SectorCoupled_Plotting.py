@@ -84,8 +84,14 @@ def find_wildcard_value(name: str, key: str) -> float:
     return float(m.group(1).replace("p", "."))
 
 
-def parse_wildcards(path: Path) -> dict:
+def parse_wildcards(path: Path) -> dict | None:
+    """
+    Return the wildcard values parsed from a network filename, or None if the
+    network does not have the 'IC' (industrial cluster) wildcard.
+    """
     name = path.name
+    if re.search(r"(?<![A-Za-z])IC(?![A-Za-z])", name) is None:
+        return None
     return {
         "CR": find_wildcard_value(name, "CR"),
         "BUYcap": find_wildcard_value(name, "BUYcap"),
@@ -313,6 +319,8 @@ def load_metrics_df(networks_folder, region: str = None) -> pd.DataFrame:
     records = []
     for path in sorted(Path(networks_folder).glob("*.nc")):
         wc = parse_wildcards(path)
+        if wc is None:
+            continue
         records.append({**wc, "path": path})
     df = pd.DataFrame(records)
     df = add_network_metrics(df)
@@ -416,8 +424,8 @@ def plot_heatmap_two_regions(
 # loaded from disk exactly once, and every plot below (single-region and
 # combined) reuses this in-memory DataFrame instead of reloading networks.
 
-iberian_networks_folder = r"results/Iberic40_2035_industrial_clusters/all/networks"
-nordic_networks_folder = r"results/Noridcs100_2035_industrial_clusters/all/networks"
+iberian_networks_folder = r"results/Iberic40_2035_industrial_clusters_all3h/all/networks"
+nordic_networks_folder = r"results/Noridcs100_2035_industrial_clusters_all3h/all/networks"
 
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
 regions_iberian = gdp.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
