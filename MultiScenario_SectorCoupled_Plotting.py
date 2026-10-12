@@ -459,6 +459,94 @@ def plot_heatmap_two_regions(
     return fig, (ax1, ax2, cax)
 
 
+def plot_heatmap_grid_two_regions(
+    df: pd.DataFrame,
+    region1,
+    region2,
+    axis,
+    fixed,
+    value_cols,
+    title1,
+    title2,
+    cr_range=None,
+    axis_range=None,
+    main_title=None,
+    region_col="region",
+):
+    """
+    Single figure gathering the two-region heatmaps (``axis`` vs CR) of several
+    metrics: one row per metric, one column per region. Each row shares its own
+    color scale and has its own colorbar, labelled with the metric name.
+
+    value_cols: list of (value_col, cmap) tuples, one per row.
+    The other arguments are the same as in plot_heatmap_two_regions.
+    """
+    wildcard_cols = ["CR", "BUYcap", "SELLcap", "BOTHcap"]
+
+    def build_pivot(region_value, value_col):
+        d = df.loc[df[region_col] == region_value]
+        d = d.drop_duplicates(subset=wildcard_cols, keep="first")
+        for col, val in fixed.items():
+            d = d.loc[d[col] == val]
+        if cr_range is not None:
+            d = d.loc[d.CR.between(cr_range[0], cr_range[1])]
+        if axis_range is not None:
+            d = d.loc[d[axis].between(axis_range[0], axis_range[1])]
+        return (
+            d.pivot(index=axis, columns="CR", values=value_col)
+            .sort_index(axis=0, ascending=True)
+            .sort_index(axis=1, ascending=True)
+        )
+
+    def pct_labels(values):
+        return [f"{float(v):.0%}" for v in values]
+
+    nrows = len(value_cols)
+    fig, axes = plt.subplots(
+        nrows, 3, figsize=(15, 5 * nrows),
+        gridspec_kw={"width_ratios": [1, 1, 0.05]}, squeeze=False,
+    )
+
+    for row, (value_col, cmap) in enumerate(value_cols):
+        ax1, ax2, cax = axes[row]
+        pivot1 = build_pivot(region1, value_col)
+        pivot2 = build_pivot(region2, value_col)
+
+        vmin = min(pivot1.min().min(), pivot2.min().min())
+        vmax = max(pivot1.max().max(), pivot2.max().max())
+
+        sns.heatmap(pivot1, annot=True, fmt=".1f", cmap=cmap, ax=ax1, vmin=vmin, vmax=vmax, cbar=False)
+        sns.heatmap(
+            pivot2, annot=True, fmt=".1f", cmap=cmap, ax=ax2, vmin=vmin, vmax=vmax,
+            cbar=True, cbar_ax=cax,
+        )
+
+        for ax, pivot, title in [(ax1, pivot1, title1), (ax2, pivot2, title2)]:
+            ax.invert_yaxis()
+            ax.set_xlabel("CR")
+            ax.set_ylabel(axis)
+            ax.set_xticklabels(pct_labels(pivot.columns))
+            ax.set_yticklabels(pct_labels(pivot.index))
+            # Region names only once, as column headers above the first row.
+            if row == 0:
+                ax.set_title(title)
+
+        cax.set_ylabel(value_col, rotation=90, labelpad=8)
+
+    if main_title:
+        fig.suptitle(main_title, fontsize=16)
+        fig.tight_layout(rect=[0, 0, 1, 0.98])
+    else:
+        fig.tight_layout()
+
+    # tight_layout leaves a wide gap before the colorbars; pull them next to ax2.
+    for ax1, ax2, cax in axes:
+        pos2 = ax2.get_position()
+        cax.set_position([pos2.x1 + 0.01, pos2.y0, cax.get_position().width, pos2.height])
+
+    return fig, axes
+
+
 #%%
 # Build the combined metrics DataFrame once: each network (both regions) is
 # loaded from disk exactly once, and every plot below (single-region and
@@ -588,4 +676,33 @@ for value_col, cmap in [
     )
 
 #%%
+# Same combined heatmaps gathered in a single figure per wildcard: one row per
+# metric, one column per region.
 
+VALUE_COLS = [
+    ("CO₂ Captured Cluster [Mtons/year]", "Purples"),
+    ("CO₂ Price [€/ton]", "Reds"),
+    ("Renewable Capacity Cluster [GW]", "Greens"),
+    ("Share of Curtailment in the Cluster[%]", YELLOWS),
+]
+
+for axis, fixed, axis_range in [
+    ("BUYcap", {"SELLcap": 0, "BOTHcap": 0}, (0, 1)),
+    ("SELLcap", {"BUYcap": 0, "BOTHcap": 0}, (0, 0.5)),
+    ("BOTHcap", {"BUYcap": 0, "SELLcap": 0}, (0, 0.5)),
+]:
+    fig, axes = plot_heatmap_grid_two_regions(
+        df_all,
+        REGION_IBERIAN,
+        REGION_NORDIC,
+        axis=axis,
+        fixed=fixed,
+        value_cols=VALUE_COLS,
+        title1=REGION_IBERIAN,
+        title2=REGION_NORDIC,
+        cr_range=None,
+        axis_range=axis_range,
+        main_title=", ".join(f"{k}={v:.0%}" for k, v in fixed.items()),
+    )
+
+#%%
