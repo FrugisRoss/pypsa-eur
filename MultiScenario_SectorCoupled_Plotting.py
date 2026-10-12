@@ -19,6 +19,7 @@ import plotly.graph_objects as go
 import re
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib import font_manager
 import pandas as pd
 import pypsa
 from packaging.version import Version, parse
@@ -459,6 +460,16 @@ def plot_heatmap_two_regions(
     return fig, (ax1, ax2, cax)
 
 
+# Helvetica where installed (e.g. macOS); otherwise its free clone TeX Gyre
+# Heros, registered here from the user font folder if present.
+for _font_file in (Path.home() / ".local/share/fonts/tex-gyre-heros").glob("*.otf"):
+    font_manager.fontManager.addfont(_font_file)
+_available_fonts = {f.name for f in font_manager.fontManager.ttflist}
+HEATMAP_FONTS = [
+    f for f in ["Helvetica", "Arial", "TeX Gyre Heros"] if f in _available_fonts
+] + ["DejaVu Sans"]
+
+
 def plot_heatmap_grid_two_regions(
     df: pd.DataFrame,
     region1,
@@ -501,48 +512,66 @@ def plot_heatmap_grid_two_regions(
     def pct_labels(values):
         return [f"{float(v):.0%}" for v in values]
 
+    annot_size, tick_size, label_size, title_size = 10, 13, 14, 15
+    cbar_tick_size, cbar_label_size = 10, 12
+    title_pad = 12  # gap between the region headers and the first row [pt]
+
     nrows = len(value_cols)
-    fig, axes = plt.subplots(
-        nrows, 3, figsize=(15, 5 * nrows),
-        gridspec_kw={"width_ratios": [1, 1, 0.05]}, squeeze=False,
-    )
-
-    for row, (value_col, cmap) in enumerate(value_cols):
-        ax1, ax2, cax = axes[row]
-        pivot1 = build_pivot(region1, value_col)
-        pivot2 = build_pivot(region2, value_col)
-
-        vmin = min(pivot1.min().min(), pivot2.min().min())
-        vmax = max(pivot1.max().max(), pivot2.max().max())
-
-        sns.heatmap(pivot1, annot=True, fmt=".1f", cmap=cmap, ax=ax1, vmin=vmin, vmax=vmax, cbar=False)
-        sns.heatmap(
-            pivot2, annot=True, fmt=".1f", cmap=cmap, ax=ax2, vmin=vmin, vmax=vmax,
-            cbar=True, cbar_ax=cax,
+    # The font family is fixed on each text when it is created, so everything
+    # below has to be built inside this context.
+    with plt.rc_context({"font.family": HEATMAP_FONTS}):
+        fig, axes = plt.subplots(
+            nrows, 3, figsize=(10.5, 3.2 * nrows),
+            gridspec_kw={"width_ratios": [1, 1, 0.05]}, squeeze=False,
         )
 
-        for ax, pivot, title in [(ax1, pivot1, title1), (ax2, pivot2, title2)]:
-            ax.invert_yaxis()
-            ax.set_xlabel("CR")
-            ax.set_ylabel(axis)
-            ax.set_xticklabels(pct_labels(pivot.columns))
-            ax.set_yticklabels(pct_labels(pivot.index))
-            # Region names only once, as column headers above the first row.
-            if row == 0:
-                ax.set_title(title)
+        for row, (value_col, cmap) in enumerate(value_cols):
+            ax1, ax2, cax = axes[row]
+            pivot1 = build_pivot(region1, value_col)
+            pivot2 = build_pivot(region2, value_col)
 
-        cax.set_ylabel(value_col, rotation=90, labelpad=8)
+            vmin = min(pivot1.min().min(), pivot2.min().min())
+            vmax = max(pivot1.max().max(), pivot2.max().max())
 
-    if main_title:
-        fig.suptitle(main_title, fontsize=16)
-        fig.tight_layout(rect=[0, 0, 1, 0.98])
-    else:
+            annot_kws = {"fontsize": annot_size}
+            sns.heatmap(
+                pivot1, annot=True, fmt=".1f", cmap=cmap, ax=ax1, vmin=vmin, vmax=vmax,
+                cbar=False, annot_kws=annot_kws,
+            )
+            sns.heatmap(
+                pivot2, annot=True, fmt=".1f", cmap=cmap, ax=ax2, vmin=vmin, vmax=vmax,
+                cbar=True, cbar_ax=cax, annot_kws=annot_kws,
+            )
+
+            for ax, pivot, title in [(ax1, pivot1, title1), (ax2, pivot2, title2)]:
+                ax.invert_yaxis()
+                ax.grid(False)
+                ax.set_xlabel("CR", fontsize=label_size, fontstyle="italic")
+                ax.set_ylabel(axis, fontsize=label_size, fontstyle="italic")
+                ax.set_xticklabels(pct_labels(pivot.columns), fontsize=tick_size)
+                ax.set_yticklabels(pct_labels(pivot.index), fontsize=tick_size, rotation=0)
+                # Region names only once, as column headers above the first row.
+                if row == 0:
+                    ax.set_title(title, fontsize=title_size, pad=title_pad)
+
+            cax.grid(False)
+            cax.tick_params(labelsize=cbar_tick_size)
+            # Unit on its own line so the label fits the shorter rows.
+            cax.set_ylabel(
+                value_col.replace(" [", "\n["), rotation=90, labelpad=8, fontsize=cbar_label_size
+            )
+
         fig.tight_layout()
+        if main_title:
+            # Sit the main title just above the region headers.
+            headers_top = title_pad + 1.2 * title_size
+            y = axes[0, 0].get_position().y1 + (headers_top + 8) / 72 / fig.get_figheight()
+            fig.suptitle(main_title, fontsize=16, fontstyle="italic", y=y, va="bottom")
 
-    # tight_layout leaves a wide gap before the colorbars; pull them next to ax2.
-    for ax1, ax2, cax in axes:
-        pos2 = ax2.get_position()
-        cax.set_position([pos2.x1 + 0.01, pos2.y0, cax.get_position().width, pos2.height])
+        # tight_layout leaves a wide gap before the colorbars; pull them next to ax2.
+        for ax1, ax2, cax in axes:
+            pos2 = ax2.get_position()
+            cax.set_position([pos2.x1 + 0.01, pos2.y0, cax.get_position().width, pos2.height])
 
     return fig, axes
 
@@ -681,10 +710,13 @@ for value_col, cmap in [
 
 VALUE_COLS = [
     ("CO₂ Captured Cluster [Mtons/year]", "Purples"),
-    ("CO₂ Price [€/ton]", "Reds"),
+    #("CO₂ Price [€/ton]", "Reds"),
     ("Renewable Capacity Cluster [GW]", "Greens"),
-    ("Share of Curtailment in the Cluster[%]", YELLOWS),
+    # ("Share of Curtailment in the Cluster[%]", YELLOWS),
 ]
+
+PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
+PICTURES_DIR.mkdir(parents=True, exist_ok=True)
 
 for axis, fixed, axis_range in [
     ("BUYcap", {"SELLcap": 0, "BOTHcap": 0}, (0, 1)),
@@ -704,5 +736,7 @@ for axis, fixed, axis_range in [
         axis_range=axis_range,
         main_title=", ".join(f"{k}={v:.0%}" for k, v in fixed.items()),
     )
+    fig.savefig(PICTURES_DIR / f"heatmap_{axis}.pdf", bbox_inches="tight")
+    plt.show()
 
-#%%
+ #%%
