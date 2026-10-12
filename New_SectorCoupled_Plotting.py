@@ -41,7 +41,7 @@ label_to_colors = {
     'urban central solar thermal collector': "#3e1c04",
     'urban decentral solar thermal collector': '#87402e',
     'rural solar thermal collector': '#f5a4b4',
-    'Net Balance': "#FB0202",
+    'Net Balance': "#00FF00",  # Changed to green
     'onwind': "#0281d6",
     'Fischer-Tropsch': "#4e42f5",
     'Sabatier': '#ebb028',
@@ -51,7 +51,7 @@ label_to_colors = {
     'H2 Electrolysis renewable cluster': "#473BF5",
     'solar-hsat renewable cluster': "#870000",
     'solar renewable cluster': "#bff542",
-    'battery charger renewable cluster': "#193ade",
+    'battery charger renewable cluster': "#EF7627",
     'battery discharger renewable cluster': "#0d0f5c",
     'electricity renewable cluster': "#BEBBFA",
     'electricity renewable cluster back': "#889899",
@@ -2241,13 +2241,30 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
                                     )
 
 
+        # electricity price at the node's AC bus (outside the cluster) on a
+        # second y-axis on the right. Only the plotted window is drawn so the
+        # price axis scales to what is shown
+        el_price = n.buses_t.marginal_price.loc[:, node].loc[start_date:end_date]
+        ax_price = ax.twinx()
+        ax_price.plot(el_price.index, el_price,
+                      '--',
+                      color='red',
+                      linewidth=1.5,
+                      label='Electricity price outside the cluster')
+        ax_price.spines["right"]
+        ax_price.tick_params(axis="y")
+        ax_price.set_ylabel("electricity price outside the cluster [euro/MWh]")
+
         # Layout / labels
         ax.set_xlim(start_date, end_date)
 
 
         ax.set_ylabel("Power [GWh]")
         ax.set_title(f"Electricity Production and Consumption in the Cluster of {node}")
-        ax.legend(loc="center left", bbox_to_anchor=(1.02, 0.5), frameon=True)
+        handles, labels = ax.get_legend_handles_labels()
+        price_handles, price_labels = ax_price.get_legend_handles_labels()
+        ax.legend(handles + price_handles, labels + price_labels,
+                  loc="center left", bbox_to_anchor=(1.12, 0.5), frameon=True)
         figure.tight_layout()
 
     return el_balance_cluster
@@ -2310,7 +2327,7 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.25) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0) & (df.SELLcap == 0.1)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 
 FT_oil_prices_rc, methanol_prices_rc, FT_oil_prices_average_rc, methanol_prices_average_rc,methanol_cost_shares_rc = compute_ft_and_methanol_prices_renewable_cluster(n)
 
@@ -2326,7 +2343,7 @@ cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "DK1 0")
 
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='01-1-2013', end_date='01-7-2013')
 
-el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='07-07-2013', end_date='07-14-2013')
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='07-01-2013', end_date='07-07-2013')
 
 #%%
 

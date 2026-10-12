@@ -474,31 +474,13 @@ if config["enable"]["retrieve"]:
     # Some logic to find the correct file URL
     # Sometimes files are released delayed or ahead of schedule, check which file is currently available
 
-    def check_file_exists(url):
-        response = requests.head(url)
-        return response.status_code == 200
-
-    # Basic pattern where WDPA files can be found
-    url_pattern = (
-        "https://d1gam3xoknrgr2.cloudfront.net/current/WDPA_{bYYYY}_Public_shp.zip"
+    # Protected Planet's monthly CDN URLs no longer resolve; use the archived
+    # July 2025 release (same source upstream PyPSA-Eur uses, see data/versions.csv)
+    bYYYY = "Jul2025"
+    url = (
+        "https://web.archive.org/web/20250715071823if_/"
+        "https%3A//d1gam3xoknrgr2.cloudfront.net/current/WDPA_Jul2025_Public_shp.zip"
     )
-
-    # 3-letter month + 4 digit year for current/previous/next month to test
-    current_monthyear = datetime.now().strftime("%b%Y")
-    prev_monthyear = (datetime.now() - timedelta(30)).strftime("%b%Y")
-    next_monthyear = (datetime.now() + timedelta(30)).strftime("%b%Y")
-
-    # Test prioritised: current month -> previous -> next
-    for bYYYY in [current_monthyear, prev_monthyear, next_monthyear]:
-        if check_file_exists(url := url_pattern.format(bYYYY=bYYYY)):
-            break
-        else:
-            # If None of the three URLs are working
-            url = False
-
-    assert (
-        url
-    ), f"No WDPA files found at {url_pattern} for bY='{current_monthyear}, {prev_monthyear}, or {next_monthyear}'"
 
     # Downloading protected area database from WDPA
     # extract the main zip and then merge the contained 3 zipped shapefiles
@@ -532,7 +514,7 @@ if config["enable"]["retrieve"]:
         # Website: https://www.protectedplanet.net/en/thematic-areas/marine-protected-areas
         input:
             zip_file=storage(
-                f"https://d1gam3xoknrgr2.cloudfront.net/current/WDPA_WDOECM_{bYYYY}_Public_marine_shp.zip",
+                "https://web.archive.org/web/20250715084308if_/https%3A//d1gam3xoknrgr2.cloudfront.net/current/WDPA_WDOECM_Jul2025_Public_marine_shp.zip",
                 keep_local=True,
             ),
         params:

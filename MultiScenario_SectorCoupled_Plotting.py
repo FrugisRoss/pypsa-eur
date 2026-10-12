@@ -135,11 +135,47 @@ def renewable_capacity_cluster(n) -> float:
     return n.generators.loc[mask, "p_nom_opt"].sum() / 1e3
 
 
+def curtailment_share_cluster(n) -> float:
+    """
+    Share of the available renewable generation in the industrial clusters
+    that is curtailed [%] for a single loaded network.
+
+    Available generation is p_nom_opt * p_max_pu, actual generation is the
+    dispatch p, both weighted by snapshot_weightings and summed over all
+    cluster generators and snapshots.
+    """
+    generators = n.generators.index[
+        n.generators.index.str.contains("renewable cluster")
+    ]
+    generators = generators[n.generators.loc[generators, "p_nom_opt"].gt(1)]
+
+    if generators.empty:
+        return 0.0
+
+    weights = n.snapshot_weightings.generators
+
+    available = (
+        n.get_switchable_as_dense("Generator", "p_max_pu")[generators]
+        .multiply(n.generators.loc[generators, "p_nom_opt"], axis=1)
+        .multiply(weights, axis=0)
+        .sum()
+        .sum()
+    )
+    if available <= 0:
+        return 0.0
+
+    actual = n.generators_t.p[generators].multiply(weights, axis=0).sum().sum()
+
+    curtailed_share = 1.0 - actual / available
+    return float(np.clip(curtailed_share, 0.0, 1.0)) * 100
+
+
 # Column name -> function computing that column from a single loaded network.
 NETWORK_METRICS = {
     "CO₂ Captured Cluster [Mtons/year]": co2_captured_cluster,
     "CO₂ Price [€/ton]": co2_marginal_price,
     "Renewable Capacity Cluster [GW]": renewable_capacity_cluster,
+    "Share of Curtailment in the Cluster[%]": curtailment_share_cluster,
 }
 
 
@@ -408,13 +444,17 @@ def plot_heatmap_two_regions(
     ax2.set_yticklabels(pct_labels(pivot2.index))
 
     if suptitle:
-        cax.set_ylabel(suptitle, rotation=270, labelpad=15, va="bottom")
+        cax.set_ylabel(suptitle, rotation=90, labelpad=8)
 
     fig.tight_layout()
 
     if main_title:
         fig.suptitle(main_title, fontsize=14, y=0.95)
         fig.tight_layout(rect=[0, 0, 1, 0.97])
+
+    # tight_layout leaves a wide gap before the colorbar; pull it next to ax2.
+    pos2 = ax2.get_position()
+    cax.set_position([pos2.x1 + 0.01, pos2.y0, cax.get_position().width, pos2.height])
 
     return fig, (ax1, ax2, cax)
 
@@ -431,6 +471,11 @@ config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text(
 regions_iberian = gdp.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
 regions_nordic = gdp.read_file(r'resources/Noridcs100_2035_industrial_clusters/all/regions_onshore_base_s_100.geojson').set_index("name")
 
+# Matplotlib has no built-in sequential yellow colormap, so define one.
+YELLOWS = mcolors.LinearSegmentedColormap.from_list(
+    "Yellows", ["#fffde7", "#fff176", "#fdd835", "#f9a825"]
+)
+
 REGION_IBERIAN = "Iberian Peninsula"
 REGION_NORDIC = "Nordic Countries"
 
@@ -446,16 +491,20 @@ df = df_iberian
 #%%
 
 fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, buycap_range=(0, 1), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Iberian Peninsula - SELLcap=0%, BOTHcap=0%")
-fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, sellcap_range=(0, 0.4), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
-# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, sellcap_range=(0, 0.5), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
 
 fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, buycap_range=(0, 1), title="CO₂ Marginal Price [€/ton]", main_title="Iberian Peninsula - SELLcap=0%, BOTHcap=0%")
-fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, sellcap_range=(0, 0.4), title="CO₂ Marginal Price [€/ton]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
-# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Marginal Price [€/ton]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, sellcap_range=(0, 0.5), title="CO₂ Marginal Price [€/ton]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Marginal Price [€/ton]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
 
 fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, buycap_range=(0, 1), title="Renewable Capacity in Clusters [GW]", main_title="Iberian Peninsula - SELLcap=0%, BOTHcap=0%")
-fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, sellcap_range=(0, 0.4), title="Renewable Capacity in Clusters [GW]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
-# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, bothcap_range=(0, 0.5), title="Renewable Capacity in Clusters [GW]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, sellcap_range=(0, 0.5), title="Renewable Capacity in Clusters [GW]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, bothcap_range=(0, 0.5), title="Renewable Capacity in Clusters [GW]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
+
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "Share of Curtailment in the Cluster[%]", YELLOWS, cr_range=None, buycap_range=(0, 1), title="Share of Curtailment in Renewable Clusters [%]", main_title="Iberian Peninsula - SELLcap=0%, BOTHcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Share of Curtailment in the Cluster[%]", YELLOWS, cr_range=None, sellcap_range=(0, 0.5), title="Share of Curtailment in Renewable Clusters [%]", main_title="Iberian Peninsula - BUYcap=0%, BOTHcap=0%")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Share of Curtailment in the Cluster[%]", YELLOWS, cr_range=None, bothcap_range=(0, 0.5), title="Share of Curtailment in Renewable Clusters [%]", main_title="Iberian Peninsula 2035 - BUYcap=0%, SELLcap=0%")
 
 
 # %%
@@ -465,16 +514,20 @@ df = df_nordic
 
 #%%
 fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, buycap_range=(0, 1), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Nordics Countries - SELLcap=0%")
-fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, sellcap_range=(0, 0.4), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Nordic Countries - BUYcap=0%")
-# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, sellcap_range=(0, 0.5), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Nordic Countries - BUYcap=0%")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Captured Cluster [Mtons/year]", "Purples", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Captured in Renewable Clusters [Mtons/year]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
 
 fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, buycap_range=(0, 1), title="CO₂ Marginal Price [€/ton]", main_title="Nordic Countries- SELLcap=0%")
-fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, sellcap_range=(0, 0.4), title="CO₂ Marginal Price [€/ton]", main_title="Nordic Countries - BUYcap=0%")
-# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Marginal Price [€/ton]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, sellcap_range=(0, 0.5), title="CO₂ Marginal Price [€/ton]", main_title="Nordic Countries - BUYcap=0%")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "CO₂ Price [€/ton]", "Reds", cr_range=None, bothcap_range=(0, 0.5), title="CO₂ Marginal Price [€/ton]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
 
 fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, buycap_range=(0, 1), title="Renewable Capacity in Clusters [GW]", main_title="Nordic Countries - SELLcap=0%")
-fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, sellcap_range=(0, 0.4), title="Renewable Capacity in Clusters [GW]", main_title="Nordics Countries - BUYcap=0%")
-# fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, bothcap_range=(0, 0.5), title="Renewable Capacity in Clusters [GW]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, sellcap_range=(0, 0.5), title="Renewable Capacity in Clusters [GW]", main_title="Nordics Countries - BUYcap=0%")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Renewable Capacity Cluster [GW]", "Greens", cr_range=None, bothcap_range=(0, 0.5), title="Renewable Capacity in Clusters [GW]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
+
+fig, ax = plot_heatmap_buycap_vs_cr(df, 0, 0, "Share of Curtailment in the Cluster[%]", YELLOWS, cr_range=None, buycap_range=(0, 1), title="Share of Curtailment in Renewable Clusters [%]", main_title="Nordic Countries - SELLcap=0%")
+fig, ax = plot_heatmap_sellcap_vs_cr(df, 0, 0, "Share of Curtailment in the Cluster[%]", YELLOWS, cr_range=None, sellcap_range=(0, 0.5), title="Share of Curtailment in Renewable Clusters [%]", main_title="Nordic Countries - BUYcap=0%")
+fig, ax = plot_heatmap_bothcap_vs_cr(df, 0, 0, "Share of Curtailment in the Cluster[%]", YELLOWS, cr_range=None, bothcap_range=(0, 0.5), title="Share of Curtailment in Renewable Clusters [%]", main_title="Nordics 2035 - BUYcap=0%, SELLcap=0%")
 
 #%%
 # Combined Iberian Peninsula + Nordics heatmaps, one figure per metric, shared color scale/legend.
@@ -484,6 +537,7 @@ for value_col, cmap in [
     ("CO₂ Captured Cluster [Mtons/year]", "Purples"),
     ("CO₂ Price [€/ton]", "Reds"),
     ("Renewable Capacity Cluster [GW]", "Greens"),
+    ("Share of Curtailment in the Cluster[%]", YELLOWS),
 ]:
     fig, axes = plot_heatmap_two_regions(
         df_all,
@@ -512,7 +566,23 @@ for value_col, cmap in [
         title2=REGION_NORDIC,
         cmap=cmap,
         cr_range=None,
-        axis_range=(0, 0.4),
+        axis_range=(0, 0.5),
+        suptitle=value_col,
+        main_title="BUYcap=0%",
+    )
+
+    fig, axes = plot_heatmap_two_regions(
+        df_all,
+        REGION_IBERIAN,
+        REGION_NORDIC,
+        axis="BOTHcap",
+        fixed={"BUYcap": 0, "SELLcap": 0},
+        value_col=value_col,
+        title1=REGION_IBERIAN,
+        title2=REGION_NORDIC,
+        cmap=cmap,
+        cr_range=None,
+        axis_range=(0, 0.5),
         suptitle=value_col,
         main_title="BUYcap=0%",
     )
