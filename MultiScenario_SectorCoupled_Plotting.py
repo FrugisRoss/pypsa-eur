@@ -709,9 +709,9 @@ for value_col, cmap in [
 # metric, one column per region.
 
 VALUE_COLS = [
-    ("CO₂ Captured Cluster [Mtons/year]", "Purples"),
-    #("CO₂ Price [€/ton]", "Reds"),
-    ("Renewable Capacity Cluster [GW]", "Greens"),
+    # ("CO₂ Captured Cluster [Mtons/year]", "Purples"),
+    ("CO₂ Price [€/ton]", "Reds"),
+    # ("Renewable Capacity Cluster [GW]", "Greens"),
     # ("Share of Curtailment in the Cluster[%]", YELLOWS),
 ]
 
@@ -736,7 +736,7 @@ for axis, fixed, axis_range in [
         axis_range=axis_range,
         main_title=", ".join(f"{k}={v:.0%}" for k, v in fixed.items()),
     )
-    fig.savefig(PICTURES_DIR / f"heatmap_{axis}.pdf", bbox_inches="tight")
+    fig.savefig(PICTURES_DIR / f"heatmap_co2price_{axis}.pdf", bbox_inches="tight")
     plt.show()
 
  #%%
