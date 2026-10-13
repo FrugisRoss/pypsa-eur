@@ -209,7 +209,7 @@ def plot_co2_stored_balance_maps(
     circle_scale=0.01,
     legend_sizes=None,
     fig_width=10,
-    legend_ncol=4,
+    legend_ncol=1,
     save_path=None,
 ):
     """
@@ -225,7 +225,8 @@ def plot_co2_stored_balance_maps(
     circles are sized relative to the map width rather than in degrees, so
     the same amount of CO2 gives the same circle on every map, whatever its
     geographical scale. This is what allows a single circle-size legend,
-    placed below the maps to the left of the technology legend.
+    placed below the maps to the left of the technology legends (one column
+    for the supply technologies and one for the consumption technologies).
 
     Parameters
     ----------
@@ -242,7 +243,7 @@ def plot_co2_stored_balance_maps(
     fig_width : float
         Figure width in inches; the height follows from the maps.
     legend_ncol : int
-        Number of columns of the technology legend.
+        Number of columns of each of the two technology legends.
     save_path : str or Path, optional
         If given, the figure is saved there.
     """
@@ -295,6 +296,17 @@ def plot_co2_stored_balance_maps(
     )
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
 
+    # split the technologies in supply and consumption; the ones appearing
+    # on both sides go where they are larger (summed over all the maps)
+    all_sizes = pd.concat(bus_sizes)
+    supply_total = all_sizes[all_sizes > 0].groupby(level="carrier").sum()
+    consumption_total = all_sizes[all_sizes < 0].abs().groupby(level="carrier").sum()
+    supp_carriers = sorted(
+        c for c in carrier_colors
+        if supply_total.get(c, 0) >= consumption_total.get(c, 0)
+    )
+    cons_carriers = sorted(c for c in carrier_colors if c not in supp_carriers)
+
     # --------------------------------------------------
     # Map extents with a common height / width ratio
     # --------------------------------------------------
@@ -309,7 +321,6 @@ def plot_co2_stored_balance_maps(
     # Figure layout (all lengths in inches)
     # --------------------------------------------------
     n_maps = len(cases)
-    techs = sorted(carrier_colors)
     legend_fontsize = 6
     legend_title_fontsize = 7
 
@@ -324,11 +335,12 @@ def plot_co2_stored_balance_maps(
     ) / n_maps
     map_h = map_w * aspect
 
-    # radius of the legend semicircles in points
+    # radius of the legend semicircles in points (checked against the
+    # circles actually drawn on the maps further down)
     legend_radii = [np.sqrt(s) * circle_scale * map_w * 72 for s in legend_sizes]
     max_radius = max(legend_radii, default=0)
 
-    tech_rows = int(np.ceil(len(techs) / legend_ncol))
+    tech_rows = int(np.ceil(max(len(supp_carriers), len(cons_carriers)) / legend_ncol))
     tech_legend_h = (legend_title_fontsize * 1.6 + tech_rows * legend_fontsize * 1.5) / 72
     size_legend_h = (
         legend_title_fontsize * 1.6
@@ -429,6 +441,24 @@ def plot_co2_stored_balance_maps(
         ax.set_title(case.get("title", ""), fontsize=8)
 
     # --------------------------------------------------
+    # Check of the circle sizes: measure, on the rendered maps, the radius
+    # in points of a 1 Mt semicircle and use it for the legend semicircles
+    # --------------------------------------------------
+    fig.canvas.draw()
+    points_per_sqrt_mt = []
+    for ax, extent in zip(axes, extents):
+        x_pixels = ax.transData.transform([(0, 0), (circle_scale * (extent[1] - extent[0]), 0)])[:, 0]
+        points_per_sqrt_mt.append((x_pixels[1] - x_pixels[0]) * 72 / fig.dpi)
+    if not np.allclose(points_per_sqrt_mt, circle_scale * map_w * 72, rtol=0.01):
+        print(
+            "WARNING: the maps are not drawn at the expected size, radius of a "
+            f"1 {unit} semicircle in points: expected {circle_scale * map_w * 72:.2f}, "
+            f"drawn {np.round(points_per_sqrt_mt, 2)}"
+        )
+    legend_radii = [np.sqrt(s) * points_per_sqrt_mt[0] for s in legend_sizes]
+    max_radius = max(legend_radii, default=0)
+
+    # --------------------------------------------------
     # Colorbar (shared, on the right)
     # --------------------------------------------------
     cax = fig.add_axes(
@@ -447,7 +477,7 @@ def plot_co2_stored_balance_maps(
 
     # --------------------------------------------------
     # Legends (shared, below the maps):
-    # circle sizes to the left, technologies to the right
+    # circle sizes to the left, supply and consumption technologies to the right
     # --------------------------------------------------
     lax = fig.add_axes(
         [
@@ -485,18 +515,31 @@ def plot_co2_stored_balance_maps(
         )
         lax.add_artist(size_legend)
 
-    lax.legend(
-        [Patch(facecolor=carrier_colors[t], edgecolor="None") for t in techs],
-        techs,
-        bbox_to_anchor=(0.2, 1),
-        ncol=legend_ncol,
-        title="CO₂ stored balance (upper half: supply, lower half: consumption)",
-        handlelength=1.0,
-        handleheight=1.0,
-        handletextpad=0.4,
-        labelspacing=0.25,
-        columnspacing=1.5,
+    tech_legend_kwargs = {
+        "ncol": legend_ncol,
+        "handlelength": 1.0,
+        "handleheight": 1.0,
+        "handletextpad": 0.4,
+        "labelspacing": 0.25,
+        "columnspacing": 1.5,
         **legend_kwargs,
+    }
+
+    supply_legend = lax.legend(
+        [Patch(facecolor=carrier_colors[t], edgecolor="None") for t in supp_carriers],
+        supp_carriers,
+        bbox_to_anchor=(0.2, 1),
+        title="Supply (upper half)",
+        **tech_legend_kwargs,
+    )
+    lax.add_artist(supply_legend)
+
+    lax.legend(
+        [Patch(facecolor=carrier_colors[t], edgecolor="None") for t in cons_carriers],
+        cons_carriers,
+        bbox_to_anchor=(0.5, 1),
+        title="Consumption (lower half)",
+        **tech_legend_kwargs,
     )
 
     if save_path is not None:
