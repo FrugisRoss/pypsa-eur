@@ -5,13 +5,13 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
-from matplotlib.patches import Patch, Polygon
+from matplotlib.patches import Patch, Polygon, Wedge
+from matplotlib.legend_handler import HandlerBase
 import geopandas as gpd
 import numpy as np
 import pandas as pd
 from pathlib import Path
 import yaml
-from pypsa.plot import add_legend_semicircles
 from pypsa.statistics import get_transmission_carriers
 from scripts.plot_power_network import load_projection
 
@@ -61,22 +61,6 @@ label_to_colors = {
     'grid connection (sell) renewable cluster': '#a69594',
     'grid connection (buy) renewable cluster': '#858ba8',
 }
-
-
-def get_projected_area_factor(ax, boundaries, srid=4326):
-    import pyproj
-    crs_geographic = pyproj.CRS.from_epsg(srid)
-    crs_projected = pyproj.CRS(ax.projection.proj4_init)
-    transformer = pyproj.Transformer.from_crs(crs_geographic, crs_projected, always_xy=True)
-
-    lon_c = (boundaries[0] + boundaries[1]) / 2
-    lat_c = (boundaries[2] + boundaries[3]) / 2
-
-    px0, py0 = transformer.transform(lon_c, lat_c)
-    px1, py1 = transformer.transform(lon_c + 1, lat_c)
-
-    factor = np.sqrt((px1 - px0)**2 + (py1 - py0)**2)
-    return factor
 
 
 def compute_co2_stored_balance(n, config_plotting):
@@ -173,13 +157,59 @@ def compute_co2_sequestration_potential(n, config_plotting):
     return storage_potential
 
 
+class HandlerSemicircle(HandlerBase):
+    """
+    Legend handler drawing an upper semicircle whose radius is the radius
+    of the handle (a Wedge) in points, i.e. at its true size on the page.
+    """
+
+    def create_artists(
+        self, legend, orig_handle, xdescent, ydescent, width, height, fontsize, trans
+    ):
+        center = (width / 2 - xdescent, -ydescent)
+        patch = Wedge(center, orig_handle.r, 0, 180)
+        self.update_prop(patch, orig_handle, legend)
+        patch.set_transform(trans)
+        return [patch]
+
+
+def get_projected_extent(crs, boundaries):
+    """
+    Bounding box [x_min, x_max, y_min, y_max], in the coordinates of the
+    projection `crs`, of the lon/lat box [lon_min, lon_max, lat_min, lat_max].
+    """
+    lon = np.linspace(boundaries[0], boundaries[1], 100)
+    lat = np.linspace(boundaries[2], boundaries[3], 100)
+    lons = np.concatenate([lon, lon, np.full(100, boundaries[0]), np.full(100, boundaries[1])])
+    lats = np.concatenate([np.full(100, boundaries[2]), np.full(100, boundaries[3]), lat, lat])
+    points = crs.transform_points(ccrs.PlateCarree(), lons, lats)
+    return [points[:, 0].min(), points[:, 0].max(), points[:, 1].min(), points[:, 1].max()]
+
+
+def pad_extent_to_aspect(extent, aspect):
+    """
+    Enlarge a projected extent symmetrically around its centre, in one
+    direction only, until height / width equals `aspect`.
+    """
+    x0, x1, y0, y1 = extent
+    width, height = x1 - x0, y1 - y0
+    if height / width < aspect:
+        pad = (width * aspect - height) / 2
+        y0, y1 = y0 - pad, y1 + pad
+    else:
+        pad = (height / aspect - width) / 2
+        x0, x1 = x0 - pad, x1 + pad
+    return [x0, x1, y0, y1]
+
+
 def plot_co2_stored_balance_maps(
     cases,
     config_plotting,
     label_to_colors,
-    geo_scale=0.15,
+    circle_scale=0.01,
     legend_sizes=None,
-    figsize=(10, 6.5),
+    fig_width=10,
+    legend_ncol=4,
     save_path=None,
 ):
     """
@@ -189,7 +219,13 @@ def plot_co2_stored_balance_maps(
     the stored-CO2 buses, the lower half the CO2 consumed, both split by
     technology. The regions are coloured by the CO2 sequestration potential,
     on a colour scale shared by all the maps (single colorbar on the right).
-    A single technology legend is placed below the maps.
+
+    All the maps have the same size on the page: the boundaries of each case
+    are enlarged (in one direction only) to a common height/width ratio. The
+    circles are sized relative to the map width rather than in degrees, so
+    the same amount of CO2 gives the same circle on every map, whatever its
+    geographical scale. This is what allows a single circle-size legend,
+    placed below the maps to the left of the technology legend.
 
     Parameters
     ----------
@@ -197,11 +233,16 @@ def plot_co2_stored_balance_maps(
         One dict per map with keys
         'n' (pypsa.Network), 'regions' (GeoDataFrame indexed by node name),
         'boundaries' ([lon_min, lon_max, lat_min, lat_max]) and 'title'.
-    geo_scale : float
-        Scaling of the circles: radius [deg] = sqrt(size [Mt]) * geo_scale.
+    circle_scale : float
+        Radius of a 1 Mt semicircle as a fraction of the map width
+        (radius = sqrt(size [Mt]) * circle_scale * map width).
     legend_sizes : list of float, optional
-        Sizes shown in the circle-size legends. Defaults to the 'bus_sizes'
+        Sizes shown in the circle-size legend. Defaults to the 'bus_sizes'
         of the 'co2 stored' balance map in the plotting config.
+    fig_width : float
+        Figure width in inches; the height follows from the maps.
+    legend_ncol : int
+        Number of columns of the technology legend.
     save_path : str or Path, optional
         If given, the figure is saved there.
     """
@@ -212,15 +253,24 @@ def plot_co2_stored_balance_maps(
 
     if legend_sizes is None:
         legend_sizes = settings.get("bus_sizes", [])
+    legend_sizes = sorted(legend_sizes, reverse=True)
 
     # --------------------------------------------------
     # Data
     # --------------------------------------------------
     bus_sizes = []
     regions_list = []
+    carrier_colors = {}
     for case in cases:
         n = case["n"]
-        bus_sizes.append(compute_co2_stored_balance(n, config_plotting))
+        bus_size = compute_co2_stored_balance(n, config_plotting)
+        bus_sizes.append(bus_size)
+
+        for c in bus_size.index.unique("carrier"):
+            color = label_to_colors.get(c, n.carriers.color.get(c, ""))
+            if not isinstance(color, str) or color == "":
+                color = "lightgrey"
+            carrier_colors.setdefault(c, color)
 
         regions = case["regions"].copy()
         # NOTE: no fillna here - nodes with no potential stay NaN
@@ -245,46 +295,71 @@ def plot_co2_stored_balance_maps(
     )
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
 
-    def get_color(n, c):
-        if c in label_to_colors:
-            return label_to_colors[c]
-        color = n.carriers.color.get(c, "")
-        return color if isinstance(color, str) and color != "" else "lightgrey"
-
     # --------------------------------------------------
-    # Figure
+    # Map extents with a common height / width ratio
     # --------------------------------------------------
     crs = load_projection(copy.deepcopy(config))
 
-    fig, axes = plt.subplots(
-        1,
-        len(cases),
-        figsize=figsize,
-        subplot_kw={"projection": crs},
-        layout="constrained",
-        squeeze=False,
-    )
-    axes = axes.ravel()
+    extents = [get_projected_extent(crs, case["boundaries"]) for case in cases]
+    aspects = [(e[3] - e[2]) / (e[1] - e[0]) for e in extents]
+    aspect = float(np.exp(np.mean(np.log(aspects))))
+    extents = [pad_extent_to_aspect(e, aspect) for e in extents]
 
-    size_legend_kwargs = {
-        "loc": "upper left",
-        "frameon": False,
-        "alignment": "left",
-        "fontsize": 6,
-        "title_fontproperties": {
-            "weight": "bold",
-            "size": 7,
-        },
-        "labelspacing": 0.4,
-    }
+    # --------------------------------------------------
+    # Figure layout (all lengths in inches)
+    # --------------------------------------------------
+    n_maps = len(cases)
+    techs = sorted(carrier_colors)
+    legend_fontsize = 6
+    legend_title_fontsize = 7
 
-    carrier_colors = {}
+    left, right, top, bottom = 0.1, 0.1, 0.3, 0.1
+    wspace = 0.15
+    cbar_pad, cbar_width, cbar_label_space = 0.15, 0.12, 0.55
+    legend_pad = 0.2
 
-    for ax, case, regions, bus_size in zip(axes, cases, regions_list, bus_sizes):
+    map_w = (
+        fig_width - left - right - wspace * (n_maps - 1)
+        - cbar_pad - cbar_width - cbar_label_space
+    ) / n_maps
+    map_h = map_w * aspect
+
+    # radius of the legend semicircles in points
+    legend_radii = [np.sqrt(s) * circle_scale * map_w * 72 for s in legend_sizes]
+    max_radius = max(legend_radii, default=0)
+
+    tech_rows = int(np.ceil(len(techs) / legend_ncol))
+    tech_legend_h = (legend_title_fontsize * 1.6 + tech_rows * legend_fontsize * 1.5) / 72
+    size_legend_h = (
+        legend_title_fontsize * 1.6
+        + len(legend_sizes) * (max_radius + legend_fontsize)
+    ) / 72
+    legend_h = max(tech_legend_h, size_legend_h) + 0.1
+
+    fig_height = top + map_h + legend_pad + legend_h + bottom
+    fig = plt.figure(figsize=(fig_width, fig_height))
+
+    map_bottom = bottom + legend_h + legend_pad
+    axes = [
+        fig.add_axes(
+            [
+                (left + i * (map_w + wspace)) / fig_width,
+                map_bottom / fig_height,
+                map_w / fig_width,
+                map_h / fig_height,
+            ],
+            projection=crs,
+        )
+        for i in range(n_maps)
+    ]
+
+    # --------------------------------------------------
+    # Maps
+    # --------------------------------------------------
+    for ax, case, regions, bus_size, extent in zip(axes, cases, regions_list, bus_sizes, extents):
         n = case["n"]
-        boundaries = case["boundaries"]
 
-        ax.set_extent(boundaries, crs=ccrs.PlateCarree())
+        ax.set_extent(extent, crs=crs)
         ax.add_feature(cfeature.OCEAN, facecolor="white", zorder=0)
         ax.add_feature(cfeature.LAND, facecolor="whitesmoke", zorder=0)
         regions.to_crs(crs.proj4_init).plot(
@@ -303,8 +378,10 @@ def plot_co2_stored_balance_maps(
         ax.add_feature(cfeature.COASTLINE, edgecolor="darkgrey", linewidth=0.5, zorder=1)
         ax.add_feature(cfeature.BORDERS, edgecolor="darkgrey", linewidth=0.3, zorder=1)
         ax.spines['geo'].set_visible(False)
+        ax.set_extent(extent, crs=crs)
 
-        area_correction = get_projected_area_factor(ax, boundaries, srid=4326)
+        # radius of a 1 Mt semicircle in the units of the projection
+        unit_radius = circle_scale * (extent[1] - extent[0])
 
         for loc, group in bus_size.groupby(level="location"):
             group = group.droplevel("location")
@@ -325,26 +402,23 @@ def plot_co2_stored_balance_maps(
                 if total <= 0:
                     continue
 
-                r_corrected = np.sqrt(total) * geo_scale * area_correction
+                radius = np.sqrt(total) * unit_radius
                 values = values.sort_values(ascending=False)
 
                 theta1 = 180
                 for tech, value in values.items():
-                    color = get_color(n, tech)
-                    carrier_colors[tech] = color
-
                     theta2 = theta1 + direction * value / total * 180
 
                     angles = np.linspace(np.radians(theta1), np.radians(theta2), 100)
-                    xs = x_proj + r_corrected * np.cos(angles)
-                    ys = y_proj + r_corrected * np.sin(angles)
+                    xs = x_proj + radius * np.cos(angles)
+                    ys = y_proj + radius * np.sin(angles)
                     verts = np.column_stack([xs, ys])
                     verts = np.vstack([[x_proj, y_proj], verts, [x_proj, y_proj]])
 
                     poly = Polygon(
                         verts,
                         closed=True,
-                        facecolor=color,
+                        facecolor=carrier_colors[tech],
                         edgecolor="white",
                         linewidth=0.3,
                         zorder=3,
@@ -354,56 +428,75 @@ def plot_co2_stored_balance_maps(
 
         ax.set_title(case.get("title", ""), fontsize=8)
 
-        if len(legend_sizes) > 0:
-            add_legend_semicircles(
-                ax,
-                [s * geo_scale**2 for s in legend_sizes],
-                [f"{s} {unit}" for s in legend_sizes],
-                patch_kw={"color": "#666"},
-                legend_kw={
-                    "bbox_to_anchor": (0, 1),
-                    **size_legend_kwargs,
-                },
-            )
-
     # --------------------------------------------------
     # Colorbar (shared, on the right)
     # --------------------------------------------------
-    sm = plt.cm.ScalarMappable(cmap=orange_cmap, norm=norm)
-    cbar = fig.colorbar(
-        sm,
-        ax=axes,
-        location="right",
-        shrink=0.8,
-        pad=0.02,
-        aspect=40,
+    cax = fig.add_axes(
+        [
+            (fig_width - right - cbar_label_space - cbar_width) / fig_width,
+            (map_bottom + 0.1 * map_h) / fig_height,
+            cbar_width / fig_width,
+            0.8 * map_h / fig_height,
+        ]
     )
+    sm = plt.cm.ScalarMappable(cmap=orange_cmap, norm=norm)
+    cbar = fig.colorbar(sm, cax=cax)
     cbar.outline.set_edgecolor("None")
     cbar.set_label(f"CO₂ sequestration potential [{unit}CO₂/a]", fontsize=6)
     cbar.ax.tick_params(labelsize=6)
 
     # --------------------------------------------------
-    # Technology legend (shared, below the maps)
+    # Legends (shared, below the maps):
+    # circle sizes to the left, technologies to the right
     # --------------------------------------------------
-    techs = sorted(carrier_colors)
-    handles = [Patch(facecolor=carrier_colors[t], edgecolor="None") for t in techs]
-    fig.legend(
-        handles,
-        techs,
-        loc="outside lower center",
-        ncol=min(len(techs), 4),
-        frameon=False,
-        fontsize=6,
-        title="CO₂ stored balance (upper half: supply, lower half: consumption)",
-        title_fontproperties={
+    lax = fig.add_axes(
+        [
+            left / fig_width,
+            bottom / fig_height,
+            (fig_width - left - right) / fig_width,
+            legend_h / fig_height,
+        ]
+    )
+    lax.axis("off")
+
+    legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "fontsize": legend_fontsize,
+        "title_fontproperties": {
             "weight": "bold",
-            "size": 7,
+            "size": legend_title_fontsize,
         },
+        "borderaxespad": 0,
+    }
+
+    if len(legend_sizes) > 0:
+        size_legend = lax.legend(
+            [Wedge((0, 0), r, 0, 180, facecolor="#666", edgecolor="None") for r in legend_radii],
+            [f"{s} {unit}" for s in legend_sizes],
+            handler_map={Wedge: HandlerSemicircle()},
+            bbox_to_anchor=(0, 1),
+            title="Circle size",
+            handlelength=2 * max_radius / legend_fontsize,
+            handleheight=max_radius / legend_fontsize,
+            labelspacing=0.6,
+            **legend_kwargs,
+        )
+        lax.add_artist(size_legend)
+
+    lax.legend(
+        [Patch(facecolor=carrier_colors[t], edgecolor="None") for t in techs],
+        techs,
+        bbox_to_anchor=(0.2, 1),
+        ncol=legend_ncol,
+        title="CO₂ stored balance (upper half: supply, lower half: consumption)",
         handlelength=1.0,
         handleheight=1.0,
         handletextpad=0.4,
         labelspacing=0.25,
         columnspacing=1.5,
+        **legend_kwargs,
     )
 
     if save_path is not None:
@@ -432,13 +525,15 @@ bus_sizes, regions_potential = plot_co2_stored_balance_maps(
         {
             "n": n_nordics,
             "regions": regions_nordics,
-            "boundaries": [-10, 28, 46, 73],
+            # Germany, Denmark, UK, Netherlands, Sweden and Norway
+            "boundaries": [-9, 31.5, 47, 71.5],
             "title": "Nordics",
         },
         {
             "n": n_iberian,
             "regions": regions_iberian,
-            "boundaries": [-15, 12, 35, 48],
+            # Spain and Portugal
+            "boundaries": [-10.5, 5, 35.5, 44.5],
             "title": "Iberian Peninsula",
         },
     ],
