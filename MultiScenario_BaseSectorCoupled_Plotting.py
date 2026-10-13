@@ -1,8 +1,10 @@
 #%%
 import copy
 import pypsa
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib import font_manager
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.patches import Patch, Polygon, Wedge
@@ -202,14 +204,29 @@ def pad_extent_to_aspect(extent, aspect):
     return [x0, x1, y0, y1]
 
 
+# Same font as the heatmaps of MultiScenario_SectorCoupled_Plotting.py:
+# Helvetica where installed (e.g. macOS); otherwise its free clone TeX Gyre
+# Heros, registered here from the user font folder if present.
+for _font_file in (Path.home() / ".local/share/fonts/tex-gyre-heros").glob("*.otf"):
+    font_manager.fontManager.addfont(_font_file)
+_available_fonts = {f.name for f in font_manager.fontManager.ttflist}
+MAP_FONTS = [
+    f for f in ["Helvetica", "Arial", "TeX Gyre Heros"] if f in _available_fonts
+] + ["DejaVu Sans"]
+
+
+# The font family is fixed on each text when it is created, so the whole
+# figure has to be built inside this context.
+@mpl.rc_context({"font.family": MAP_FONTS})
 def plot_co2_stored_balance_maps(
     cases,
     config_plotting,
     label_to_colors,
-    circle_scale=0.01,
+    circle_scale=0.009,
     legend_sizes=None,
-    fig_width=10,
-    legend_ncol=1,
+    fig_width=10.5,
+    supply_ncol=2,
+    consumption_ncol=1,
     save_path=None,
 ):
     """
@@ -225,8 +242,9 @@ def plot_co2_stored_balance_maps(
     circles are sized relative to the map width rather than in degrees, so
     the same amount of CO2 gives the same circle on every map, whatever its
     geographical scale. This is what allows a single circle-size legend,
-    placed below the maps to the left of the technology legends (one column
-    for the supply technologies and one for the consumption technologies).
+    placed below the maps to the left of the technology legends (one for
+    the supply technologies and one for the consumption technologies). The
+    three legends are kept close together, starting at the left edge of the maps.
 
     Parameters
     ----------
@@ -242,8 +260,8 @@ def plot_co2_stored_balance_maps(
         of the 'co2 stored' balance map in the plotting config.
     fig_width : float
         Figure width in inches; the height follows from the maps.
-    legend_ncol : int
-        Number of columns of each of the two technology legends.
+    supply_ncol, consumption_ncol : int
+        Number of columns of the supply and of the consumption legend.
     save_path : str or Path, optional
         If given, the figure is saved there.
     """
@@ -290,9 +308,9 @@ def plot_co2_stored_balance_maps(
     elif vmin == vmax:
         vmax += 1
 
-    orange_cmap = mcolors.LinearSegmentedColormap.from_list(
-        "orange_scale",
-        ["#fff2e0", "#e07b00", "#663500"],
+    potential_cmap = mcolors.LinearSegmentedColormap.from_list(
+        "grey_green_scale",
+        ["#d3e8cd", "#8fa98a", "#2f4a34"],
     )
     norm = plt.Normalize(vmin=vmin, vmax=vmax)
 
@@ -321,13 +339,17 @@ def plot_co2_stored_balance_maps(
     # Figure layout (all lengths in inches)
     # --------------------------------------------------
     n_maps = len(cases)
-    legend_fontsize = 6
-    legend_title_fontsize = 7
+    # font sizes in line with the heatmaps of MultiScenario_SectorCoupled_Plotting.py
+    title_size = 15
+    cbar_tick_size, cbar_label_size = 10, 12
+    legend_fontsize = 9
+    legend_title_fontsize = 10
 
-    left, right, top, bottom = 0.1, 0.1, 0.3, 0.1
+    left, right, top, bottom = 0.1, 0.1, 0.45, 0.1
     wspace = 0.15
-    cbar_pad, cbar_width, cbar_label_space = 0.15, 0.12, 0.55
-    legend_pad = 0.2
+    cbar_pad, cbar_width, cbar_label_space = 0.15, 0.12, 0.9
+    legend_pad = 0.1  # gap between the maps and the legends [in]
+    legend_gap = 0.4  # gap between the legends [in]
 
     map_w = (
         fig_width - left - right - wspace * (n_maps - 1)
@@ -340,7 +362,12 @@ def plot_co2_stored_balance_maps(
     legend_radii = [np.sqrt(s) * circle_scale * map_w * 72 for s in legend_sizes]
     max_radius = max(legend_radii, default=0)
 
-    tech_rows = int(np.ceil(max(len(supp_carriers), len(cons_carriers)) / legend_ncol))
+    tech_rows = int(
+        max(
+            np.ceil(len(supp_carriers) / supply_ncol),
+            np.ceil(len(cons_carriers) / consumption_ncol),
+        )
+    )
     tech_legend_h = (legend_title_fontsize * 1.6 + tech_rows * legend_fontsize * 1.5) / 72
     size_legend_h = (
         legend_title_fontsize * 1.6
@@ -377,7 +404,7 @@ def plot_co2_stored_balance_maps(
         regions.to_crs(crs.proj4_init).plot(
             ax=ax,
             column="storage_potential",
-            cmap=orange_cmap,
+            cmap=potential_cmap,
             vmin=vmin,
             vmax=vmax,
             edgecolor="None",
@@ -438,7 +465,7 @@ def plot_co2_stored_balance_maps(
                     ax.add_patch(poly)
                     theta1 = theta2
 
-        ax.set_title(case.get("title", ""), fontsize=8)
+        ax.set_title(case.get("title", ""), fontsize=title_size)
 
     # --------------------------------------------------
     # Check of the circle sizes: measure, on the rendered maps, the radius
@@ -464,16 +491,19 @@ def plot_co2_stored_balance_maps(
     cax = fig.add_axes(
         [
             (fig_width - right - cbar_label_space - cbar_width) / fig_width,
-            (map_bottom + 0.1 * map_h) / fig_height,
+            map_bottom / fig_height,
             cbar_width / fig_width,
-            0.8 * map_h / fig_height,
+            map_h / fig_height,
         ]
     )
-    sm = plt.cm.ScalarMappable(cmap=orange_cmap, norm=norm)
+    sm = plt.cm.ScalarMappable(cmap=potential_cmap, norm=norm)
     cbar = fig.colorbar(sm, cax=cax)
     cbar.outline.set_edgecolor("None")
-    cbar.set_label(f"CO₂ sequestration potential [{unit}CO₂/a]", fontsize=6)
-    cbar.ax.tick_params(labelsize=6)
+    # Unit on its own line, as in the heatmaps.
+    cbar.set_label(
+        f"CO₂ sequestration potential\n[{unit}CO₂/year]", labelpad=8, fontsize=cbar_label_size
+    )
+    cbar.ax.tick_params(labelsize=cbar_tick_size)
 
     # --------------------------------------------------
     # Legends (shared, below the maps):
@@ -501,10 +531,11 @@ def plot_co2_stored_balance_maps(
         "borderaxespad": 0,
     }
 
+    legends = []
     if len(legend_sizes) > 0:
         size_legend = lax.legend(
             [Wedge((0, 0), r, 0, 180, facecolor="#666", edgecolor="None") for r in legend_radii],
-            [f"{s} {unit}" for s in legend_sizes],
+            [f"{s} {unit}/year" for s in legend_sizes],
             handler_map={Wedge: HandlerSemicircle()},
             bbox_to_anchor=(0, 1),
             title="Circle size",
@@ -514,14 +545,14 @@ def plot_co2_stored_balance_maps(
             **legend_kwargs,
         )
         lax.add_artist(size_legend)
+        legends.append(size_legend)
 
     tech_legend_kwargs = {
-        "ncol": legend_ncol,
         "handlelength": 1.0,
         "handleheight": 1.0,
         "handletextpad": 0.4,
         "labelspacing": 0.25,
-        "columnspacing": 1.5,
+        "columnspacing": 1.2,
         **legend_kwargs,
     }
 
@@ -529,18 +560,37 @@ def plot_co2_stored_balance_maps(
         [Patch(facecolor=carrier_colors[t], edgecolor="None") for t in supp_carriers],
         supp_carriers,
         bbox_to_anchor=(0.2, 1),
-        title="Supply (upper half)",
+        title="Supply",
+        ncol=supply_ncol,
         **tech_legend_kwargs,
     )
     lax.add_artist(supply_legend)
+    legends.append(supply_legend)
 
-    lax.legend(
+    consumption_legend = lax.legend(
         [Patch(facecolor=carrier_colors[t], edgecolor="None") for t in cons_carriers],
         cons_carriers,
         bbox_to_anchor=(0.5, 1),
-        title="Consumption (lower half)",
+        title="Consumption",
+        ncol=consumption_ncol,
         **tech_legend_kwargs,
     )
+    legends.append(consumption_legend)
+
+    # keep the legends close together, as a group starting at the left edge
+    # of the maps and with the titles on the same line (sizes and positions
+    # measured once drawn); the gap shrinks if the group would not fit
+    fig.canvas.draw()
+    lax_box = lax.get_window_extent()
+    widths = [leg.get_window_extent().width / lax_box.width for leg in legends]
+    title_tops = [leg.get_title().get_window_extent().y1 for leg in legends]
+    n_gaps = max(len(legends) - 1, 1)
+    gap = min(legend_gap / (fig_width - left - right), (1 - sum(widths)) / n_gaps)
+    x = 0
+    for leg, width, title_top in zip(legends, widths, title_tops):
+        y = 1 - (title_top - min(title_tops)) / lax_box.height
+        leg.set_bbox_to_anchor((x, y), transform=lax.transAxes)
+        x += width + gap
 
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -563,15 +613,11 @@ regions_nordics = gpd.read_file(r'resources/Noridcs100_2035_industrial_clusters/
 regions_iberian = gpd.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
 
 #%%
+PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
+PICTURES_DIR.mkdir(parents=True, exist_ok=True)
+
 bus_sizes, regions_potential = plot_co2_stored_balance_maps(
     [
-        {
-            "n": n_nordics,
-            "regions": regions_nordics,
-            # Germany, Denmark, UK, Netherlands, Sweden and Norway
-            "boundaries": [-9, 31.5, 47, 71.5],
-            "title": "Nordics",
-        },
         {
             "n": n_iberian,
             "regions": regions_iberian,
@@ -579,9 +625,17 @@ bus_sizes, regions_potential = plot_co2_stored_balance_maps(
             "boundaries": [-10.5, 5, 35.5, 44.5],
             "title": "Iberian Peninsula",
         },
+        {
+            "n": n_nordics,
+            "regions": regions_nordics,
+            # Germany, Denmark, UK, Netherlands, Sweden and Norway
+            "boundaries": [-10, 25, 47, 71.5],
+            "title": "Nordic Countries",
+        },
     ],
     config_plotting,
     label_to_colors,
+    save_path=PICTURES_DIR / "BaseCasesMap_CCColormap.pdf",
 )
 
 #%%
