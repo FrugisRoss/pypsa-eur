@@ -583,3 +583,5 @@ bus_sizes, regions_potential = plot_co2_stored_balance_maps(
     config_plotting,
     label_to_colors,
 )
+
+#%%
