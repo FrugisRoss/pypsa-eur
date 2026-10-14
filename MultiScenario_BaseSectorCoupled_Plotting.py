@@ -641,3 +641,110 @@ bus_sizes, regions_potential = plot_co2_stored_balance_maps(
 )
 
 #%%
+# Balance of a bus carrier: one stacked bar per region, one segment per
+# technology. Segments above zero supply the carrier, segments below zero
+# withdraw it.
+@mpl.rc_context({"font.family": MAP_FONTS})
+def plot_balance_bars(cases, bus_carrier, ylabel, unit_conversion=1e6, min_size=0.5, save_path=None):
+    """
+    cases: list of (title, pypsa.Network), one bar each.
+    unit_conversion: divides the balance (1e6: tCO2 -> MtCO2, MWh -> TWh).
+    min_size: technologies below this value (after conversion) in all the
+        cases are left out.
+    """
+    balance = pd.DataFrame(
+        {
+            title: n.statistics.energy_balance(bus_carrier=bus_carrier)
+            .groupby("carrier").sum().div(unit_conversion)
+            for title, n in cases
+        }
+    ).fillna(0)
+    balance = balance[balance.abs().max(axis=1) > min_size]
+    # largest suppliers first, largest withdrawals last
+    balance = balance.loc[balance.sum(axis=1).sort_values(ascending=False).index]
+
+    # colours: label_to_colors first, then the plotting config, then the network
+    tech_colors = {
+        **cases[-1][1].carriers.color.replace("", np.nan).dropna(),
+        **config_plotting["plotting"]["tech_colors"],
+        **label_to_colors,
+    }
+    # carriers named differently in the plotting config
+    aliases = {"Combined-Cycle Gas": "CCGT", "Open-Cycle Gas": "OCGT"}
+    colors = {c: tech_colors.get(aliases.get(c, c), "lightgrey") for c in balance.index}
+
+    # one panel per bar and a last one holding the legend
+    n_bars = len(cases)
+    fig, axes = plt.subplots(1, n_bars + 1, figsize=(10.5, 5), width_ratios=[1] * n_bars + [2])
+
+    for ax, title in zip(axes, balance.columns):
+        values = balance[title]
+        # stack the supply upwards and the withdrawals downwards, the largest next to zero
+        supply = values[values > 0]
+        withdrawal = values[values < 0].iloc[::-1]
+        for stack in [supply, withdrawal]:
+            bottom = stack.cumsum().shift(fill_value=0)
+            ax.bar(
+                0, stack.values, bottom=bottom.values, width=0.6,
+                color=[colors[c] for c in stack.index], edgecolor="white", linewidth=0.3,
+            )
+
+        ax.axhline(0, color="black", linewidth=0.8)
+        ax.set_xlim(-0.6, 0.6)
+        ax.set_xticks([])
+        ax.set_title(title, fontsize=15)
+        ax.set_ylabel(ylabel, fontsize=12)
+        ax.tick_params(labelsize=10)
+        ax.grid(False)
+        ax.spines[["top", "right", "bottom"]].set_visible(False)
+
+    # same y-axis on all the bars, labelled only on the first one
+    bar_axes = axes[:n_bars]
+    ylim = (min(ax.get_ylim()[0] for ax in bar_axes), max(ax.get_ylim()[1] for ax in bar_axes))
+    for ax in bar_axes:
+        ax.set_ylim(ylim)
+    for ax in bar_axes[1:]:
+        ax.set_ylabel("")
+        ax.tick_params(labelleft=False)
+
+    axes[-1].axis("off")
+    axes[-1].legend(
+        [Patch(facecolor=colors[c], edgecolor="None") for c in balance.index],
+        balance.index,
+        loc="center left",
+        borderaxespad=0,
+        ncol=2 if len(balance) > 12 else 1,
+        frameon=False,
+        fontsize=9,
+        handlelength=1.0,
+        handleheight=1.0,
+        handletextpad=0.4,
+        columnspacing=1.2,
+    )
+
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, bbox_inches="tight")
+    plt.show()
+
+    return balance
+
+
+#%%
+balance_cases = [("Iberian Peninsula", n_iberian), ("Nordic Countries", n_nordics)]
+
+# 'co2' is the atmosphere: its own segment is the net emissions
+balance_co2 = plot_balance_bars(
+    balance_cases, "co2", "CO₂ balance [MtCO₂/year]",
+    save_path=PICTURES_DIR / "BaseCases_CO2Balance.pdf",
+)
+balance_methanol = plot_balance_bars(
+    balance_cases, "methanol", "Methanol balance [TWh/year]",
+    save_path=PICTURES_DIR / "BaseCases_MethanolBalance.pdf",
+)
+balance_oil = plot_balance_bars(
+    balance_cases, "oil", "Oil balance [TWh/year]",
+    save_path=PICTURES_DIR / "BaseCases_OilBalance.pdf",
+)
+
+#%%
