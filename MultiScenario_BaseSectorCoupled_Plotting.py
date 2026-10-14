@@ -599,46 +599,6 @@ def plot_co2_stored_balance_maps(
 
     return bus_sizes, regions_list
 
-
-#%%
-config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
-
-fn_nordics = r'results/Noridcs100_2035_industrial_clusters_all3h/all/networks/base_s_100__3h_2035.nc'
-fn_iberian = r'results/Iberic40_2035_industrial_clusters_all3h/all/networks/base_s_40__3h_2035.nc'
-
-n_nordics = pypsa.Network(fn_nordics)
-n_iberian = pypsa.Network(fn_iberian)
-
-regions_nordics = gpd.read_file(r'resources/Noridcs100_2035_industrial_clusters/all/regions_onshore_base_s_100.geojson').set_index("name")
-regions_iberian = gpd.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
-
-#%%
-PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
-PICTURES_DIR.mkdir(parents=True, exist_ok=True)
-
-bus_sizes, regions_potential = plot_co2_stored_balance_maps(
-    [
-        {
-            "n": n_iberian,
-            "regions": regions_iberian,
-            # Spain and Portugal
-            "boundaries": [-10.5, 5, 35.5, 44.5],
-            "title": "Iberian Peninsula",
-        },
-        {
-            "n": n_nordics,
-            "regions": regions_nordics,
-            # Germany, Denmark, UK, Netherlands, Sweden and Norway
-            "boundaries": [-10, 25, 47, 71.5],
-            "title": "Nordic Countries",
-        },
-    ],
-    config_plotting,
-    label_to_colors,
-    save_path=PICTURES_DIR / "BaseCasesMap_CCColormap.pdf",
-)
-
-#%%
 # Balance of a bus carrier: one stacked bar per region, one segment per
 # technology. Segments above zero supply the carrier, segments below zero
 # withdraw it.
@@ -726,6 +686,46 @@ def plot_balance_bars(cases, bus_carrier, ylabel, unit_conversion=1e6, min_size=
     plt.show()
 
     return balance
+
+
+#%%
+config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
+
+fn_nordics = r'results/Noridcs100_2035_industrial_clusters_all3h/all/networks/base_s_100__3h_2035.nc'
+fn_iberian = r'results/Iberic40_2035_industrial_clusters_all3h/all/networks/base_s_40__3h_2035.nc'
+
+n_nordics = pypsa.Network(fn_nordics)
+n_iberian = pypsa.Network(fn_iberian)
+
+regions_nordics = gpd.read_file(r'resources/Noridcs100_2035_industrial_clusters/all/regions_onshore_base_s_100.geojson').set_index("name")
+regions_iberian = gpd.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
+
+#%%
+PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
+PICTURES_DIR.mkdir(parents=True, exist_ok=True)
+
+bus_sizes, regions_potential = plot_co2_stored_balance_maps(
+    [
+        {
+            "n": n_iberian,
+            "regions": regions_iberian,
+            # Spain and Portugal
+            "boundaries": [-10.5, 5, 35.5, 44.5],
+            "title": "Iberian Peninsula",
+        },
+        {
+            "n": n_nordics,
+            "regions": regions_nordics,
+            # Germany, Denmark, UK, Netherlands, Sweden and Norway
+            "boundaries": [-10, 25, 47, 71.5],
+            "title": "Nordic Countries",
+        },
+    ],
+    config_plotting,
+    label_to_colors,
+    save_path=PICTURES_DIR / "BaseCasesMap_CCColormap.pdf",
+)
+
 
 
 #%%

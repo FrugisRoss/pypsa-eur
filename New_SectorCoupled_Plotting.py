@@ -2285,10 +2285,10 @@ df = pd.DataFrame(records)
 
 #%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.0) & (df.SELLcap == 0)  & (df.BOTHcap == 0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.5) & (df.SELLcap == 0)  & (df.BOTHcap == 0), "path"].iloc[0]))
 
 cluster_components = (
-    [("link", idx) for idx in n.links.index if ("cluster" in idx and "charger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
+    [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
 # load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 31"])
@@ -2327,12 +2327,13 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0) & (df.SELLcap == 0.1)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.5) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 
+#%%
 FT_oil_prices_rc, methanol_prices_rc, FT_oil_prices_average_rc, methanol_prices_average_rc,methanol_cost_shares_rc = compute_ft_and_methanol_prices_renewable_cluster(n)
 
 cluster_components = (
-    [("link", idx) for idx in n.links.index if ("cluster" in idx and "charger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
+    [("link", idx) for idx in n.links.index if ("cluster" in idx  and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
 load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK1 0"])
@@ -2367,3 +2368,5 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 df = pd.DataFrame(records)
 
 n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.0) & (df.SELLcap == 0.1)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+
+#%%
