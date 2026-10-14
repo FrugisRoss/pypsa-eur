@@ -918,158 +918,190 @@ def node_colors(nodes) -> dict:
     return dict(zip(nodes, palette))
 
 
-def plot_cluster_capacities_and_flh(capacities, flh, title=None, log_capacity=False, linthresh=0.01):
+def combination_label(key) -> str:
+    CR, BUYcap, SELLcap, BOTHcap = key
+    return f"CR={CR:.0%}, BUYcap={BUYcap:.0%}, SELLcap={SELLcap:.0%}, BOTHcap={BOTHcap:.0%}"
+
+
+def non_empty_networks(caps_dict, region=None) -> list:
+    """Keys of the networks with at least one node; the empty ones are reported."""
+    keys = []
+    for key, capacities in caps_dict.items():
+        if capacities.empty:
+            print(f"{region}: no renewable cluster generator with p_nom_opt > 1 for {key}, skipping plot")
+        else:
+            keys.append(key)
+    return keys
+
+
+def setup_cluster_axes(axes, log_capacity=False, linthresh=0.01):
     """
-    One figure with two strip plots side by side: capacity [MW electricity]
-    (left) and full load hours [h] (right), one column per tech in
-    CLUSTER_TECHS and one dot per node. A node with zero capacity for a tech
-    is drawn at 0 in the capacity plot and not drawn in the full load hours plot.
+    Common formatting of a (n_networks x 2) grid of capacity / full load hours
+    axes: tech tick labels, y labels, light grid, axis ranges.
+    """
+    x = np.arange(len(CLUSTER_TECHS))
+    for ax_cap, ax_flh in axes:
+        for ax, ylabel in [(ax_cap, "Capacity [MW$_{el}$]"), (ax_flh, "Full load hours [h]")]:
+            ax.set_xticks(x)
+            ax.set_xticklabels(CLUSTER_TECHS, rotation=30, ha="right")
+            ax.set_xlim(-0.6, len(CLUSTER_TECHS) - 0.4)
+            ax.set_ylabel(ylabel)
+            ax.grid(axis="y", color="0.9", zorder=0)
+            ax.spines[["top", "right"]].set_visible(False)
+            # Light separators between tech columns
+            for xi in x[:-1]:
+                ax.axvline(xi + 0.5, color="0.9", linewidth=0.8, zorder=0)
+    # Axes in a column are shared, so setting the first row sets them all
+    if log_capacity:
+        axes[0, 0].set_yscale("symlog", linthresh=linthresh)
+    axes[0, 0].set_ylim(bottom=0)
+    axes[0, 1].set_ylim(0, 8760)
+
+
+def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capacity=False, linthresh=0.01):
+    """
+    One figure per region with one row per network (combination) and two
+    strip plots per row: capacity [MW electricity] (left) and full load
+    hours [h] (right), one column per tech in CLUSTER_TECHS and one dot per
+    node. A node with zero capacity for a tech is drawn at 0 in the capacity
+    plot and not drawn in the full load hours plot.
+
+    All capacity plots share the same y axis, as do all full load hours
+    plots. Each node has the same colour and horizontal position in every
+    row, and a single legend lists all nodes of the region.
 
     log_capacity uses a symlog capacity axis (log above ``linthresh`` MW,
     linear below it) so that zero capacities are still visible.
     """
-    nodes = sorted(capacities.index, key=natural_key)
+    keys = non_empty_networks(caps_dict, region)
+    if not keys:
+        return None, None
+
+    # Union of the nodes over all networks of the region
+    nodes = sorted(set().union(*(caps_dict[key].index for key in keys)), key=natural_key)
     colors = node_colors(nodes)
     x = np.arange(len(CLUSTER_TECHS))
     # Spread the nodes horizontally inside each tech column so dots don't overlap
-    offsets = np.linspace(-0.3, 0.3, len(nodes)) if len(nodes) > 1 else np.zeros(1)
+    offsets = dict(zip(nodes, np.linspace(-0.3, 0.3, len(nodes)) if len(nodes) > 1 else [0.0]))
 
-    fig, (ax_cap, ax_flh) = plt.subplots(1, 2, figsize=(16, 6))
+    fig, axes = plt.subplots(
+        len(keys), 2, figsize=(16, 4.5 * len(keys)), sharex=True, sharey="col", squeeze=False
+    )
 
-    for offset, node in zip(offsets, nodes):
-        cap = capacities.loc[node, CLUSTER_TECHS].fillna(0.0)
-        hours = flh.loc[node, CLUSTER_TECHS]
-        built = (cap > 0).to_numpy() & hours.notna().to_numpy()
-        # clip_on=False so dots on the zero line / axis edges are drawn whole
-        ax_cap.scatter(x + offset, cap, s=30, color=colors[node], label=node,
-                       edgecolor="white", linewidth=0.5, zorder=3, clip_on=False)
-        ax_flh.scatter(x[built] + offset, hours[built], s=30, color=colors[node],
-                       edgecolor="white", linewidth=0.5, zorder=3, clip_on=False)
+    for (ax_cap, ax_flh), key in zip(axes, keys):
+        capacities, flh = caps_dict[key], flh_dict[key]
+        for node in capacities.index:
+            cap = capacities.loc[node, CLUSTER_TECHS].fillna(0.0)
+            hours = flh.loc[node, CLUSTER_TECHS]
+            built = (cap > 0).to_numpy() & hours.notna().to_numpy()
+            # clip_on=False so dots on the zero line / axis edges are drawn whole
+            ax_cap.scatter(x + offsets[node], cap, s=30, color=colors[node],
+                           edgecolor="white", linewidth=0.5, zorder=3, clip_on=False)
+            ax_flh.scatter(x[built] + offsets[node], hours[built], s=30, color=colors[node],
+                           edgecolor="white", linewidth=0.5, zorder=3, clip_on=False)
+        ax_cap.set_title(combination_label(key), loc="left", fontsize=11)
 
-    for ax, ylabel in [(ax_cap, "Capacity [MW$_{el}$]"), (ax_flh, "Full load hours [h]")]:
-        ax.set_xticks(x)
-        ax.set_xticklabels(CLUSTER_TECHS, rotation=30, ha="right")
-        ax.set_ylabel(ylabel)
-        ax.grid(axis="y", color="0.9", zorder=0)
-        ax.spines[["top", "right"]].set_visible(False)
-        # Light separators between tech columns
-        for xi in x[:-1]:
-            ax.axvline(xi + 0.5, color="0.9", linewidth=0.8, zorder=0)
-    if log_capacity:
-        ax_cap.set_yscale("symlog", linthresh=linthresh)
-    ax_cap.set_ylim(bottom=0)
-    ax_flh.set_ylim(0, 8760)
+    setup_cluster_axes(axes, log_capacity, linthresh)
 
+    # One legend entry per node of the region, whatever row it appears in
+    handles = [
+        plt.Line2D([], [], marker="o", linestyle="", markersize=6, color=colors[node],
+                   markeredgecolor="white", label=node)
+        for node in nodes
+    ]
     fig.legend(
-        *ax_cap.get_legend_handles_labels(),
+        handles=handles,
         title="Node",
         loc="center left",
         bbox_to_anchor=(1.0, 0.5),
         ncol=max(1, int(np.ceil(len(nodes) / 25))),
         frameon=False,
     )
-    if title is not None:
-        fig.suptitle(title)
+    if region is not None:
+        fig.suptitle(region, fontsize=14)
     fig.tight_layout()
-    return fig, (ax_cap, ax_flh)
+    return fig, axes
 
 
 for region, (caps_dict, flh_dict) in CLUSTER_RESULTS.items():
-    for key, capacities in caps_dict.items():
-        CR, BUYcap, SELLcap, BOTHcap = key
-        if capacities.empty:
-            print(f"{region}: no renewable cluster generator with p_nom_opt > 1 for {key}, skipping plot")
-            continue
-        fig, axes = plot_cluster_capacities_and_flh(
-            capacities,
-            flh_dict[key],
-            title=f"{region} - CR={CR:.0%}, BUYcap={BUYcap:.0%}, SELLcap={SELLcap:.0%}, BOTHcap={BOTHcap:.0%}",
-            log_capacity=False,
-        )
-        plt.show()
+    fig, axes = plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=region, log_capacity=False)
+    plt.show()
 
 #%%
 # Box plots of capacity and full load hours per tech, with the nodes as grey dots behind
 
 
-def plot_cluster_boxplots(capacities, flh, title=None, log_capacity=False, linthresh=0.01):
+def plot_cluster_boxplots(caps_dict, flh_dict, region=None, log_capacity=False, linthresh=0.01):
     """
-    One figure with two box plots side by side: capacity [MW electricity]
-    (left) and full load hours [h] (right), one box per tech in CLUSTER_TECHS
-    computed over the nodes. Boxes show the median and the first/third
-    quartiles, whiskers span the full range (min to max) of the data.
-    Each node is also drawn as a light grey dot behind the boxes.
+    One figure per region with one row per network (combination) and two
+    box plots per row: capacity [MW electricity] (left) and full load hours
+    [h] (right), one box per tech in CLUSTER_TECHS computed over the nodes.
+    Boxes show the median and the first/third quartiles, whiskers span the
+    full range (min to max) of the data. Each node is also drawn as a light
+    grey dot behind the boxes, at the same horizontal position in every row.
 
+    All capacity plots share the same y axis, as do all full load hours plots.
     As in plot_cluster_capacities_and_flh, a node with zero capacity for a
     tech counts as 0 in the capacity plot and is left out of the full load
     hours plot.
     """
+    keys = non_empty_networks(caps_dict, region)
+    if not keys:
+        return None, None
+
+    nodes = sorted(set().union(*(caps_dict[key].index for key in keys)), key=natural_key)
     x = np.arange(len(CLUSTER_TECHS))
-    n_nodes = len(capacities.index)
     # Spread the dots horizontally inside each tech column
-    offsets = np.linspace(-0.25, 0.25, n_nodes) if n_nodes > 1 else np.zeros(n_nodes)
+    offsets = pd.Series(
+        np.linspace(-0.25, 0.25, len(nodes)) if len(nodes) > 1 else [0.0], index=nodes
+    )
 
-    caps = capacities[CLUSTER_TECHS].fillna(0.0)
-    hours = flh[CLUSTER_TECHS].where(caps > 0)
+    fig, axes = plt.subplots(
+        len(keys), 2, figsize=(14, 4.5 * len(keys)), sharex=True, sharey="col", squeeze=False
+    )
 
-    fig, (ax_cap, ax_flh) = plt.subplots(1, 2, figsize=(14, 6))
+    for (ax_cap, ax_flh), key in zip(axes, keys):
+        caps = caps_dict[key][CLUSTER_TECHS].fillna(0.0)
+        hours = flh_dict[key][CLUSTER_TECHS].where(caps > 0)
+        node_offsets = offsets[caps.index].to_numpy()
 
-    for ax, data in [(ax_cap, caps), (ax_flh, hours)]:
-        # Background dots
-        for xi, tech in zip(x, CLUSTER_TECHS):
-            values = data[tech].to_numpy()
-            valid = ~np.isnan(values)
-            ax.scatter(xi + offsets[valid], values[valid], s=15, color="0.8",
-                       zorder=1, clip_on=False)
+        for ax, data in [(ax_cap, caps), (ax_flh, hours)]:
+            # Background dots
+            for xi, tech in zip(x, CLUSTER_TECHS):
+                values = data[tech].to_numpy()
+                valid = ~np.isnan(values)
+                ax.scatter(xi + node_offsets[valid], values[valid], s=15, color="0.8",
+                           zorder=1, clip_on=False)
 
-        # Boxes only for techs with at least one value
-        techs = [i for i, tech in enumerate(CLUSTER_TECHS) if data[tech].notna().any()]
-        if not techs:
-            continue
-        ax.boxplot(
-            [data[CLUSTER_TECHS[i]].dropna() for i in techs],
-            positions=x[techs],
-            widths=0.6,
-            whis=(0, 100),  # whiskers at min and max
-            showfliers=False,
-            patch_artist=True,
-            boxprops=dict(facecolor="none", edgecolor="0.2", linewidth=1.2),
-            medianprops=dict(color="tab:red", linewidth=2),
-            whiskerprops=dict(color="0.2", linewidth=1.2),
-            capprops=dict(color="0.2", linewidth=1.2),
-            zorder=2,
-        )
+            # Boxes only for techs with at least one value
+            techs = [i for i, tech in enumerate(CLUSTER_TECHS) if data[tech].notna().any()]
+            if not techs:
+                continue
+            ax.boxplot(
+                [data[CLUSTER_TECHS[i]].dropna() for i in techs],
+                positions=x[techs],
+                widths=0.6,
+                whis=(0, 100),  # whiskers at min and max
+                showfliers=False,
+                patch_artist=True,
+                boxprops=dict(facecolor="none", edgecolor="0.2", linewidth=1.2),
+                medianprops=dict(color="tab:red", linewidth=2),
+                whiskerprops=dict(color="0.2", linewidth=1.2),
+                capprops=dict(color="0.2", linewidth=1.2),
+                zorder=2,
+            )
+        ax_cap.set_title(combination_label(key), loc="left", fontsize=11)
 
-    for ax, ylabel in [(ax_cap, "Capacity [MW$_{el}$]"), (ax_flh, "Full load hours [h]")]:
-        ax.set_xticks(x)
-        ax.set_xticklabels(CLUSTER_TECHS, rotation=30, ha="right")
-        ax.set_xlim(-0.6, len(CLUSTER_TECHS) - 0.4)
-        ax.set_ylabel(ylabel)
-        ax.grid(axis="y", color="0.9", zorder=0)
-        ax.spines[["top", "right"]].set_visible(False)
-    if log_capacity:
-        ax_cap.set_yscale("symlog", linthresh=linthresh)
-    ax_cap.set_ylim(bottom=0)
-    ax_flh.set_ylim(0, 8760)
+    setup_cluster_axes(axes, log_capacity, linthresh)
 
-    if title is not None:
-        fig.suptitle(title)
+    if region is not None:
+        fig.suptitle(region, fontsize=14)
     fig.tight_layout()
-    return fig, (ax_cap, ax_flh)
+    return fig, axes
 
 
 for region, (caps_dict, flh_dict) in CLUSTER_RESULTS.items():
-    for key, capacities in caps_dict.items():
-        CR, BUYcap, SELLcap, BOTHcap = key
-        if capacities.empty:
-            print(f"{region}: no renewable cluster generator with p_nom_opt > 1 for {key}, skipping plot")
-            continue
-        fig, axes = plot_cluster_boxplots(
-            capacities,
-            flh_dict[key],
-            title=f"{region} - CR={CR:.0%}, BUYcap={BUYcap:.0%}, SELLcap={SELLcap:.0%}, BOTHcap={BOTHcap:.0%}",
-            log_capacity=False,
-        )
-        plt.show()
+    fig, axes = plot_cluster_boxplots(caps_dict, flh_dict, region=region, log_capacity=False)
+    plt.show()
 
 #%%
