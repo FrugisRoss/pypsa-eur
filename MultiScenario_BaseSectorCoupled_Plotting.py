@@ -376,7 +376,9 @@ def plot_co2_stored_balance_maps(
     legend_h = max(tech_legend_h, size_legend_h) + 0.1
 
     fig_height = top + map_h + legend_pad + legend_h + bottom
-    fig = plt.figure(figsize=(fig_width, fig_height))
+    # every axes is placed by hand, so no automatic layout (it is switched on
+    # by the 'figure.autolayout' setting in some environments)
+    fig = plt.figure(figsize=(fig_width, fig_height), layout="none")
 
     map_bottom = bottom + legend_h + legend_pad
     axes = [
