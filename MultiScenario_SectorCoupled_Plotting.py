@@ -742,9 +742,6 @@ for axis, fixed, axis_range in [
  #%%
 # Per-node capacities and full load hours of the renewable cluster components
 
-CLUSTER_GENERATORS = ["solar", "solar-hsat", "onwind"]
-CLUSTER_LINKS = ["H2 Electrolysis", "urban decentral DAC", "methanolisation", "Fischer-Tropsch"]
-CLUSTER_TECHS = CLUSTER_GENERATORS + CLUSTER_LINKS
 
 
 def filter_networks(df: pd.DataFrame, combinations) -> pd.DataFrame:
@@ -762,6 +759,11 @@ def filter_networks(df: pd.DataFrame, combinations) -> pd.DataFrame:
     for combo in combinations[~matches.any(axis=0)]:
         print(f"No network found for (CR, BUYcap, SELLcap, BOTHcap) = {tuple(combo.tolist())}")
     return df.loc[matches.any(axis=1)]
+
+
+CLUSTER_GENERATORS = ["solar", "solar-hsat", "onwind"]
+CLUSTER_LINKS = ["H2 Electrolysis", "urban decentral DAC", "methanolisation", "Fischer-Tropsch"]
+CLUSTER_TECHS = CLUSTER_GENERATORS + CLUSTER_LINKS
 
 
 def cluster_generators(n, tech) -> pd.DataFrame:
@@ -796,7 +798,7 @@ def cluster_nodes(n, min_p_nom_opt=1.0) -> list:
     return sorted(nodes)
 
 
-def cluster_capacities_and_flh(n, min_p_nom_opt=1.0, top_n=None) -> tuple[pd.DataFrame, pd.DataFrame]:
+def cluster_capacities_and_flh(n, min_p_nom_opt=1.0, top_n=None, top_n_tech=None) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Return (capacities [MW electricity], full load hours [h]) of the renewable
     cluster generators/links of one network, indexed by node with one column
@@ -805,9 +807,18 @@ def cluster_capacities_and_flh(n, min_p_nom_opt=1.0, top_n=None) -> tuple[pd.Dat
     Full load hours are computed on the native p_nom_opt.
     Components with p_nom_opt < min_p_nom_opt are treated as p_nom_opt = 0.
     Missing components (or zero capacity) give NaN full load hours.
-    If top_n is given, only the top_n nodes by total generator capacity
-    (solar + solar-hsat + onwind) are kept, largest first.
+    If top_n is given, only the top_n nodes by total capacity of the
+    top_n_tech techs (a tech name or a list of them, by default
+    CLUSTER_GENERATORS: solar + solar-hsat + onwind) are kept, largest first.
     """
+    if top_n_tech is None:
+        top_n_tech = CLUSTER_GENERATORS
+    elif isinstance(top_n_tech, str):
+        top_n_tech = [top_n_tech]
+    unknown = set(top_n_tech) - set(CLUSTER_TECHS)
+    if unknown:
+        raise ValueError(f"top_n_tech {sorted(unknown)} not in CLUSTER_TECHS {CLUSTER_TECHS}")
+
     nodes = cluster_nodes(n, min_p_nom_opt)
     capacities = pd.DataFrame(0.0, index=nodes, columns=CLUSTER_TECHS)
     flh = pd.DataFrame(np.nan, index=nodes, columns=CLUSTER_TECHS)
@@ -844,21 +855,21 @@ def cluster_capacities_and_flh(n, min_p_nom_opt=1.0, top_n=None) -> tuple[pd.Dat
         built = per_node.index[per_node.p_nom_opt > 0]
         flh.loc[built, tech] = per_node.energy[built] / per_node.p_nom_opt[built]
 
-    # Keep only the top_n nodes by total generator capacity (solar + solar-hsat + onwind),
-    # largest first
+    # Keep only the top_n nodes by total capacity of the top_n_tech techs, largest first
     if top_n is not None:
-        top_nodes = capacities[CLUSTER_GENERATORS].sum(axis=1).nlargest(top_n).index
+        top_nodes = capacities[top_n_tech].sum(axis=1).nlargest(top_n).index
         capacities, flh = capacities.loc[top_nodes], flh.loc[top_nodes]
 
     return capacities, flh
 
 
-def build_cluster_dicts(df: pd.DataFrame, combinations, top_n):
+def build_cluster_dicts(df: pd.DataFrame, combinations, top_n, top_n_tech=None):
     """
     For every network in ``df`` matching one of the given
     (CR, BUYcap, SELLcap, BOTHcap) ``combinations``, build the per-node
     capacity and full-load-hours DataFrames, keeping the ``top_n`` nodes
-    with the largest total generator capacity (None keeps all nodes).
+    with the largest total capacity of the ``top_n_tech`` techs (None keeps
+    all nodes; see cluster_capacities_and_flh for ``top_n_tech``).
 
     Returns two dicts keyed by the (CR, BUYcap, SELLcap, BOTHcap) tuple.
     """
@@ -868,34 +879,15 @@ def build_cluster_dicts(df: pd.DataFrame, combinations, top_n):
         n = pypsa.Network(str(row.path))
         key = (row.CR, row.BUYcap, row.SELLcap, row.BOTHcap)
         renewable_cluster_capacities[key], renewable_cluster_full_load_hours[key] = (
-            cluster_capacities_and_flh(n, top_n=top_n)
+            cluster_capacities_and_flh(n, top_n=top_n, top_n_tech=top_n_tech)
         )
     return renewable_cluster_capacities, renewable_cluster_full_load_hours
 
 
-# (CR, BUYcap, SELLcap, BOTHcap)
-combinations = [
-    (0.4, 0, 0, 0),
-    (0.4, 0.5, 0, 0),
-    (0.4, 0, 0, 0.2),
-]
 
-renewable_cluster_capacities, renewable_cluster_full_load_hours = build_cluster_dicts(
-    df_iberian, combinations, 5
-)
-renewable_cluster_capacities_nordic, renewable_cluster_full_load_hours_nordic = build_cluster_dicts(
-    df_nordic, combinations, 5 
-)
 
-# Region name -> (capacities dict, full load hours dict), used by the plots below
-CLUSTER_RESULTS = {
-    REGION_IBERIAN: (renewable_cluster_capacities, renewable_cluster_full_load_hours),
-    REGION_NORDIC: (renewable_cluster_capacities_nordic, renewable_cluster_full_load_hours_nordic),
-}
 
-#%%
 # Strip plots of capacity and full load hours per tech, one colour per node
-
 
 def natural_key(node: str) -> list:
     """Sort key so that 'ES0 2' comes before 'ES0 10'."""
@@ -944,6 +936,8 @@ def setup_cluster_axes(axes, log_capacity=False, linthresh=0.01):
         for ax, ylabel in [(ax_cap, "Capacity [MW$_{el}$]"), (ax_flh, "Full load hours [h]")]:
             ax.set_xticks(x)
             ax.set_xticklabels(CLUSTER_TECHS, rotation=30, ha="right")
+            # sharex hides the tick labels of all but the bottom row: show them on every row
+            ax.tick_params(axis="x", labelbottom=True)
             ax.set_xlim(-0.6, len(CLUSTER_TECHS) - 0.4)
             ax.set_ylabel(ylabel)
             ax.grid(axis="y", color="0.9", zorder=0)
@@ -958,24 +952,37 @@ def setup_cluster_axes(axes, log_capacity=False, linthresh=0.01):
     axes[0, 1].set_ylim(0, 8760)
 
 
-def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capacity=False, linthresh=0.01):
+def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capacity=False, linthresh=0.01,
+                                    offgrid_key=None):
     """
     One figure per region with one row per network (combination) and two
     strip plots per row: capacity [MW electricity] (left) and full load
     hours [h] (right), one column per tech in CLUSTER_TECHS and one dot per
-    node. A node with zero capacity for a tech is drawn at 0 in the capacity
-    plot and not drawn in the full load hours plot.
+    node. A node with zero capacity for a tech is not drawn in either plot.
 
     All capacity plots share the same y axis, as do all full load hours
     plots. Each node has the same colour and horizontal position in every
     row, and a single legend lists all nodes of the region.
 
+    If offgrid_key, the (CR, BUYcap, SELLcap, BOTHcap) of the off-grid
+    network, is given, the nodes of that network are drawn as stars instead
+    of dots in every row.
+
     log_capacity uses a symlog capacity axis (log above ``linthresh`` MW,
-    linear below it) so that zero capacities are still visible.
+    linear below it) so that very small capacities are still visible.
     """
     keys = non_empty_networks(caps_dict, region)
     if not keys:
         return None, None
+
+    # Nodes of the off-grid network (keys matched with a tolerance, they are floats)
+    offgrid_nodes = set()
+    if offgrid_key is not None:
+        matching = [key for key in caps_dict if np.allclose(key, offgrid_key)]
+        if matching:
+            offgrid_nodes = set(caps_dict[matching[0]].index)
+        else:
+            print(f"{region}: no network found for off-grid case {offgrid_key}, no stars drawn")
 
     # Union of the nodes over all networks of the region
     nodes = sorted(set().union(*(caps_dict[key].index for key in keys)), key=natural_key)
@@ -993,12 +1000,15 @@ def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capaci
         for node in capacities.index:
             cap = capacities.loc[node, CLUSTER_TECHS].fillna(0.0)
             hours = flh.loc[node, CLUSTER_TECHS]
-            built = (cap > 0).to_numpy() & hours.notna().to_numpy()
-            # clip_on=False so dots on the zero line / axis edges are drawn whole
-            ax_cap.scatter(x + offsets[node], cap, s=30, color=colors[node],
-                           edgecolor="white", linewidth=0.5, zorder=3, clip_on=False)
-            ax_flh.scatter(x[built] + offsets[node], hours[built], s=30, color=colors[node],
-                           edgecolor="white", linewidth=0.5, zorder=3, clip_on=False)
+            has_cap = (cap > 0).to_numpy()
+            built = has_cap & hours.notna().to_numpy()
+            # Stars for the nodes of the off-grid network, dots otherwise
+            style = dict(marker="*", s=90) if node in offgrid_nodes else dict(marker="o", s=30)
+            # clip_on=False so dots on the axis edges are drawn whole
+            ax_cap.scatter(x[has_cap] + offsets[node], cap[has_cap], color=colors[node],
+                           edgecolor="white", linewidth=0.5, zorder=3, clip_on=False, **style)
+            ax_flh.scatter(x[built] + offsets[node], hours[built], color=colors[node],
+                           edgecolor="white", linewidth=0.5, zorder=3, clip_on=False, **style)
         ax_cap.set_title(combination_label(key), loc="left", fontsize=11)
 
     setup_cluster_axes(axes, log_capacity, linthresh)
@@ -1009,6 +1019,11 @@ def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capaci
                    markeredgecolor="white", label=node)
         for node in nodes
     ]
+    if offgrid_nodes:
+        handles.append(
+            plt.Line2D([], [], marker="*", linestyle="", markersize=10, color="0.4",
+                       markeredgecolor="white", label="clusters appearing also\nin the off-grid case")
+        )
     fig.legend(
         handles=handles,
         title="Node",
@@ -1023,11 +1038,6 @@ def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capaci
     return fig, axes
 
 
-for region, (caps_dict, flh_dict) in CLUSTER_RESULTS.items():
-    fig, axes = plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=region, log_capacity=False)
-    plt.show()
-
-#%%
 # Box plots of capacity and full load hours per tech, with the nodes as grey dots behind
 
 
@@ -1041,7 +1051,7 @@ def plot_cluster_boxplots(caps_dict, flh_dict, region=None, log_capacity=False, 
     grey dot behind the boxes, at the same horizontal position in every row.
 
     All capacity plots share the same y axis, as do all full load hours plots.
-    As in plot_cluster_capacities_and_flh, a node with zero capacity for a
+    A node with zero capacity for a
     tech counts as 0 in the capacity plot and is left out of the full load
     hours plot.
     """
@@ -1100,8 +1110,35 @@ def plot_cluster_boxplots(caps_dict, flh_dict, region=None, log_capacity=False, 
     return fig, axes
 
 
+
+#%%
+# (CR, BUYcap, SELLcap, BOTHcap)
+combinations = [
+    (0.2, 0, 0, 0),
+    (0.2, 0.5, 0, 0),
+    (0.2, 0, 0, 0.2),
+]
+
+renewable_cluster_capacities, renewable_cluster_full_load_hours = build_cluster_dicts(
+    df_iberian, combinations, 5
+)
+renewable_cluster_capacities_nordic, renewable_cluster_full_load_hours_nordic = build_cluster_dicts(
+    df_nordic, combinations, 5
+)
+
+# Region name -> (capacities dict, full load hours dict), used by the plots below
+CLUSTER_RESULTS = {
+    REGION_IBERIAN: (renewable_cluster_capacities, renewable_cluster_full_load_hours),
+    REGION_NORDIC: (renewable_cluster_capacities_nordic, renewable_cluster_full_load_hours_nordic),
+}
+
+for region, (caps_dict, flh_dict) in CLUSTER_RESULTS.items():
+    fig, axes = plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=region, log_capacity=False,
+                                                offgrid_key=combinations[0])
+    plt.show()
+
+
 for region, (caps_dict, flh_dict) in CLUSTER_RESULTS.items():
     fig, axes = plot_cluster_boxplots(caps_dict, flh_dict, region=region, log_capacity=False)
     plt.show()
-
-#%%
+# %%
