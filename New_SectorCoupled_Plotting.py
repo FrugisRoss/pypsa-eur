@@ -2269,6 +2269,271 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
 
     return el_balance_cluster
 
+
+def plot_cluster_electricity_balance_map(
+    n,
+    regions,
+    config_plotting,
+    label_to_colors,
+    boundaries,
+    nodes=None,
+    unit="TWh",
+    bus_size_factor=0.01,
+    legend_bus_sizes=(10, 20),
+    min_branch_width=0.3,
+):
+    """AC balance map (as plot_balance_map.py) with the cluster balance.
+
+    Lines, links, flows and the regional price colormap are drawn exactly
+    as in the pypsa-eur AC balance map, with the price taken from the AC
+    buses outside the clusters. The semicircles show the annual electricity
+    balance of the '<node> renewable cluster' bus (same bookkeeping as
+    plot_electricity_balance_by_cluster), drawn at the node of the cluster.
+    """
+
+    SEMICIRCLE_CORRECTION_FACTOR = (
+        2 if parse(pypsa.__version__) <= Version("0.33.2")
+        else 1
+    )
+    settings = config_plotting["plotting"]["balance_map"]["AC"]
+    weights = n.snapshot_weightings.generators
+
+    # AC buses outside the cluster
+    ac_buses = n.buses.index[
+        (n.buses.carrier == "AC") & ~n.buses.index.str.endswith(" renewable cluster")
+    ]
+    if nodes is None:
+        nodes = [b for b in ac_buses if f"{b} renewable cluster" in n.buses.index]
+
+    # --------------------------------------------------
+    # Annual electricity balance of each cluster bus [MWh]
+    # --------------------------------------------------
+    balance = {}
+    for node in nodes:
+        bal = {}
+
+        for gen in n.generators.index[
+            n.generators.index.str.startswith(node + " ")
+            & n.generators.index.str.contains("renewable cluster")
+        ]:
+            clean_name = f"{n.generators.at[gen, 'carrier']} renewable cluster"
+            bal[clean_name] = bal.get(clean_name, 0) + (
+                n.generators_t["p"][gen] * weights
+            ).sum()
+
+        for link in n.links.index[
+            n.links.index.str.startswith(node + " ")
+            & n.links.index.str.contains("renewable cluster")
+        ]:
+            clean_name = link[len(node):].lstrip()
+            clean_name = cluster_link_display_names.get(clean_name, clean_name)
+
+            if "methanolisation" in link:
+                # methanolisation electricity input is on bus2
+                value = -(n.links_t["p2"][link] * weights).sum()
+            elif "Electrolysis" in link or "DAC" in link or "battery charger" in link:
+                value = -(n.links_t["p0"][link] * weights).sum()
+            elif "battery discharger" in link:
+                value = -(n.links_t["p1"][link] * weights).sum()
+            elif link == f"{node} electricity renewable cluster":
+                value = -(n.links_t["p0"][link] * weights).sum()
+            elif link == f"{node} electricity renewable cluster back":
+                value = (n.links_t["p0"][link] * weights).sum()
+            elif link == f"{node} electricity renewable cluster both":
+                # bidirectional grid link: positive p0 -> buy, negative -> sell
+                ts = n.links_t["p0"][link] * weights
+                bal["grid connection (buy) renewable cluster"] = ts.clip(lower=0).sum()
+                bal["grid connection (sell) renewable cluster"] = ts.clip(upper=0).sum()
+                continue
+            else:
+                # Fischer-Tropsch, methanol output link: no electricity bus
+                continue
+            bal[clean_name] = bal.get(clean_name, 0) + value
+
+        balance[node] = pd.Series(bal, dtype=float)
+
+    conversion = {"MWh": 1, "GWh": 1e3, "TWh": 1e6}[unit]
+    bus_size = pd.concat(balance, names=["bus", "carrier"]).div(conversion)
+    bus_size = bus_size[bus_size.abs() > 1e-6 * bus_size.abs().max()]
+    bus_size = bus_size.sort_values(ascending=False)
+
+    # --------------------------------------------------
+    # Colours (legend labels without the ' renewable cluster' suffix)
+    # --------------------------------------------------
+    carrier_colors = n.carriers.color.copy().replace("", "grey")
+
+    def get_color(c):
+        return label_to_colors.get(c, carrier_colors.get(c, "lightgrey"))
+
+    def get_label(c):
+        return c.replace(" renewable cluster", "")
+
+    colors = (
+        bus_size.index.get_level_values("carrier")
+        .unique()
+        .to_series()
+        .map(get_color)
+    )
+
+    # --------------------------------------------------
+    # AC line / link flows (as in plot_balance_map.py)
+    # --------------------------------------------------
+    branch_conversion = settings["unit_conversion"]
+    flow = n.statistics.transmission(groupby=False, bus_carrier="AC").div(branch_conversion)
+    if not flow.empty:
+        flow_reversed_mask = flow.index.get_level_values(1).str.contains("reversed")
+        flow_reversed = flow[flow_reversed_mask].rename(
+            lambda x: x.replace("-reversed", "")
+        )
+        flow = flow[~flow_reversed_mask].subtract(flow_reversed, fill_value=0)
+
+    fallback = pd.Series(dtype=float)
+    line_widths = flow.get("Line", fallback).abs()
+    link_widths = flow.get("Link", fallback).abs()
+    line_flow = flow.get("Line")
+    link_flow = flow.get("Link")
+    transformer_flow = flow.get("Transformer")
+    branch_width_factor = settings["branch_factor"]
+    flow_size_factor = settings["flow_factor"]
+
+    # --------------------------------------------------
+    # Average electricity price outside the cluster (as in
+    # plot_balance_map.py, but without the cluster buses)
+    # --------------------------------------------------
+    prices = weights @ n.buses_t.marginal_price[ac_buses] / weights.sum()
+    price = prices.rename(n.buses.location).groupby(level=0).mean()
+    regions = regions.copy()
+    regions["price"] = price.reindex(regions.index).fillna(0)
+    vmin = settings["vmin"] if settings["vmin"] is not None else regions.price.min()
+    vmax = settings["vmax"] if settings["vmax"] is not None else regions.price.max()
+
+    # --------------------------------------------------
+    # Figure
+    # --------------------------------------------------
+    crs = load_projection(copy.deepcopy(config_plotting["plotting"]))
+    fig, ax = plt.subplots(
+        figsize=(5, 6.5),
+        subplot_kw={"projection": crs},
+        layout="constrained",
+    )
+
+    n.plot(
+        ax=ax,
+        bus_size=bus_size * bus_size_factor,
+        bus_color=colors,
+        bus_split_circle=True,
+        # floor the widths: PDF viewers draw hairlines at >= 1 px, which is
+        # why the thin AC lines are visible in the pypsa-eur PDF maps
+        line_width=(line_widths * branch_width_factor).clip(lower=min_branch_width),
+        link_width=(link_widths * branch_width_factor).clip(lower=min_branch_width),
+        line_flow=line_flow * flow_size_factor if line_flow is not None else None,
+        link_flow=link_flow * flow_size_factor if link_flow is not None else None,
+        transformer_flow=transformer_flow * flow_size_factor
+        if transformer_flow is not None
+        else None,
+        margin=0.2,
+        geomap=True,
+        geomap_color={"border": "darkgrey", "coastline": "darkgrey"},
+        boundaries=boundaries,
+    )
+
+    regions.to_crs(crs.proj4_init).plot(
+        ax=ax,
+        column="price",
+        cmap=settings["cmap"],
+        vmin=vmin,
+        vmax=vmax,
+        edgecolor="None",
+        linewidth=0,
+    )
+
+    ax.set_title("AC (renewable cluster balance)")
+
+    norm = plt.Normalize(vmin=vmin, vmax=vmax)
+    sm = plt.cm.ScalarMappable(cmap=settings["cmap"], norm=norm)
+    cbr = fig.colorbar(
+        sm,
+        ax=ax,
+        label=f"Average Marginal Price outside the cluster [{settings['region_unit']}]",
+        shrink=0.95,
+        pad=0.03,
+        aspect=50,
+        orientation="horizontal",
+    )
+    cbr.outline.set_edgecolor("None")
+
+    # --------------------------------------------------
+    # Legends
+    # --------------------------------------------------
+    legend_kwargs = {
+        "loc": "upper left",
+        "frameon": False,
+        "alignment": "left",
+        "title_fontproperties": {"weight": "bold"},
+    }
+    pad = 0.18
+
+    pos_carriers = bus_size[bus_size > 0].index.unique("carrier")
+    neg_carriers = bus_size[bus_size < 0].index.unique("carrier")
+    common_carriers = pos_carriers.intersection(neg_carriers)
+
+    def get_total_abs(c, sign):
+        vals = bus_size.xs(c, level="carrier")
+        return vals[vals * sign > 0].abs().sum()
+
+    supp_carriers = sorted(
+        set(pos_carriers) - set(common_carriers)
+        | {c for c in common_carriers if get_total_abs(c, 1) >= get_total_abs(c, -1)}
+    )
+    cons_carriers = sorted(
+        set(neg_carriers) - set(common_carriers)
+        | {c for c in common_carriers if get_total_abs(c, 1) < get_total_abs(c, -1)}
+    )
+
+    add_legend_patches(
+        ax,
+        [get_color(c) for c in supp_carriers],
+        [get_label(c) for c in supp_carriers],
+        legend_kw={
+            "bbox_to_anchor": (0, -pad),
+            "ncol": 1,
+            "title": "Supply",
+            **legend_kwargs,
+        },
+    )
+    add_legend_patches(
+        ax,
+        [get_color(c) for c in cons_carriers],
+        [get_label(c) for c in cons_carriers],
+        legend_kw={
+            "bbox_to_anchor": (0.5, -pad),
+            "ncol": 1,
+            "title": "Consumption",
+            **legend_kwargs,
+        },
+    )
+
+    add_legend_semicircles(
+        ax,
+        [s * bus_size_factor * SEMICIRCLE_CORRECTION_FACTOR for s in legend_bus_sizes],
+        [f"{s:g} {unit}" for s in legend_bus_sizes],
+        patch_kw={"color": "#666"},
+        legend_kw={"bbox_to_anchor": (0, 1), **legend_kwargs},
+    )
+
+    legend_branch_sizes = settings["branch_sizes"]
+    if legend_branch_sizes is not None:
+        add_legend_lines(
+            ax,
+            [s * branch_width_factor for s in legend_branch_sizes],
+            [f"{s} {settings['unit']}" for s in legend_branch_sizes],
+            patch_kw={"color": "#666"},
+            legend_kw={"bbox_to_anchor": (0.25, 1), **legend_kwargs},
+        )
+
+    plt.show()
+    return bus_size
+
 #%%
 networks_folder=r"results/Iberic40_2035_industrial_clusters_all3h/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
@@ -2285,12 +2550,15 @@ df = pd.DataFrame(records)
 
 #%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.5) & (df.BUYcap == 0.5) & (df.SELLcap == 0)  & (df.BOTHcap == 0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.2), "path"].iloc[0]))
 
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
+
+cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+
 # load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 31"])
 
 # # cluster_curtailments = plot_cluster_curtailment(n, "ES0 31")

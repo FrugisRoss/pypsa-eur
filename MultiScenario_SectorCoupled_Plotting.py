@@ -953,12 +953,16 @@ def setup_cluster_axes(axes, log_capacity=False, linthresh=0.01):
 
 
 def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capacity=False, linthresh=0.01,
-                                    offgrid_key=None):
+                                    offgrid_key=None, min_gen_capacity=50.0):
     """
     One figure per region with one row per network (combination) and two
     strip plots per row: capacity [MW electricity] (left) and full load
     hours [h] (right), one column per tech in CLUSTER_TECHS and one dot per
     node. A node with zero capacity for a tech is not drawn in either plot.
+
+    In each network only the nodes whose total generator capacity
+    (CLUSTER_GENERATORS: solar + solar-hsat + onwind) is at least
+    ``min_gen_capacity`` MW are drawn.
 
     All capacity plots share the same y axis, as do all full load hours
     plots. Each node has the same colour and horizontal position in every
@@ -975,17 +979,27 @@ def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capaci
     if not keys:
         return None, None
 
+    # Per network, the nodes with total generator capacity >= min_gen_capacity
+    def large_nodes(key):
+        gen_capacity = caps_dict[key][CLUSTER_GENERATORS].fillna(0.0).sum(axis=1)
+        return gen_capacity.index[gen_capacity >= min_gen_capacity]
+
+    plotted_nodes = {key: large_nodes(key) for key in caps_dict}
+
     # Nodes of the off-grid network (keys matched with a tolerance, they are floats)
     offgrid_nodes = set()
     if offgrid_key is not None:
         matching = [key for key in caps_dict if np.allclose(key, offgrid_key)]
         if matching:
-            offgrid_nodes = set(caps_dict[matching[0]].index)
+            offgrid_nodes = set(plotted_nodes[matching[0]])
         else:
             print(f"{region}: no network found for off-grid case {offgrid_key}, no stars drawn")
 
-    # Union of the nodes over all networks of the region
-    nodes = sorted(set().union(*(caps_dict[key].index for key in keys)), key=natural_key)
+    # Union of the plotted nodes over all networks of the region
+    nodes = sorted(set().union(*(plotted_nodes[key] for key in keys)), key=natural_key)
+    if not nodes:
+        print(f"{region}: no node with generator capacity >= {min_gen_capacity} MW, skipping plot")
+        return None, None
     colors = node_colors(nodes)
     x = np.arange(len(CLUSTER_TECHS))
     # Spread the nodes horizontally inside each tech column so dots don't overlap
@@ -997,7 +1011,7 @@ def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capaci
 
     for (ax_cap, ax_flh), key in zip(axes, keys):
         capacities, flh = caps_dict[key], flh_dict[key]
-        for node in capacities.index:
+        for node in plotted_nodes[key]:
             cap = capacities.loc[node, CLUSTER_TECHS].fillna(0.0)
             hours = flh.loc[node, CLUSTER_TECHS]
             has_cap = (cap > 0).to_numpy()
@@ -1022,7 +1036,7 @@ def plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=None, log_capaci
     if offgrid_nodes:
         handles.append(
             plt.Line2D([], [], marker="*", linestyle="", markersize=10, color="0.4",
-                       markeredgecolor="white", label="clusters appearing also\nin the off-grid case")
+                       markeredgecolor="white", label="clusters appearing also\nin the offgrid case")
         )
     fig.legend(
         handles=handles,
@@ -1114,27 +1128,30 @@ def plot_cluster_boxplots(caps_dict, flh_dict, region=None, log_capacity=False, 
 #%%
 # (CR, BUYcap, SELLcap, BOTHcap)
 combinations = [
-    (0.2, 0, 0, 0),
-    (0.2, 0.5, 0, 0),
-    (0.2, 0, 0, 0.2),
+    (0.4, 0, 0, 0), #reference case
+    (0.4, 0.5, 0, 0),
+    (0.4, 0, 0.2, 0),
+    (0.4, 0, 0, 0.2),
 ]
 
-renewable_cluster_capacities, renewable_cluster_full_load_hours = build_cluster_dicts(
-    df_iberian, combinations, 5
+renewable_cluster_capacities_iberian, renewable_cluster_full_load_hours_iberian = build_cluster_dicts(
+    df_iberian, combinations, 10, top_n_tech = CLUSTER_GENERATORS
 )
 renewable_cluster_capacities_nordic, renewable_cluster_full_load_hours_nordic = build_cluster_dicts(
-    df_nordic, combinations, 5
+    df_nordic, combinations, 10, top_n_tech = CLUSTER_GENERATORS
 )
+
+#%%
 
 # Region name -> (capacities dict, full load hours dict), used by the plots below
 CLUSTER_RESULTS = {
-    REGION_IBERIAN: (renewable_cluster_capacities, renewable_cluster_full_load_hours),
+    REGION_IBERIAN: (renewable_cluster_capacities_iberian, renewable_cluster_full_load_hours_iberian),
     REGION_NORDIC: (renewable_cluster_capacities_nordic, renewable_cluster_full_load_hours_nordic),
 }
 
 for region, (caps_dict, flh_dict) in CLUSTER_RESULTS.items():
     fig, axes = plot_cluster_capacities_and_flh(caps_dict, flh_dict, region=region, log_capacity=False,
-                                                offgrid_key=combinations[0])
+                                                offgrid_key=combinations[0],min_gen_capacity=50.0)
     plt.show()
 
 
