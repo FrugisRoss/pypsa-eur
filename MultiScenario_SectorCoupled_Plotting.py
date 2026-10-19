@@ -1128,10 +1128,10 @@ def plot_cluster_boxplots(caps_dict, flh_dict, region=None, log_capacity=False, 
 #%%
 # (CR, BUYcap, SELLcap, BOTHcap)
 combinations = [
-    (0.4, 0, 0, 0), #reference case
-    (0.4, 0.5, 0, 0),
-    (0.4, 0, 0.2, 0),
-    (0.4, 0, 0, 0.2),
+    (0.1, 0, 0, 0.1), #reference case
+    (0.1, 0, 0, 0.2),
+    (0.1, 0, 0, 0.3),
+    (0.1, 0, 0, 0.4),
 ]
 
 renewable_cluster_capacities_iberian, renewable_cluster_full_load_hours_iberian = build_cluster_dicts(
