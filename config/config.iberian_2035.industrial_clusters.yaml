@@ -37,7 +37,7 @@ scenario:
   clusters:
   - 40
   opts:
-  - ''
+  - 'lv1.0'
   sector_opts:
     - '3h'
     # CR+0
@@ -239,8 +239,6 @@ electricity:
   autarky:
     enable: false
     by_country: false
-
-  transmission_limit: v1.0
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#atlite
 atlite:
@@ -1092,6 +1090,7 @@ solving:
     # io_api: "direct"  # Increases performance but only supported for the highs and gurobi solvers
     # options that go into the optimize function
     track_iterations: false
+    assign_all_duals: true
     min_iterations: 2
     max_iterations: 3
     transmission_losses: 2
