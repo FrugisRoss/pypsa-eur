@@ -581,8 +581,8 @@ def plot_heatmap_grid_two_regions(
 # loaded from disk exactly once, and every plot below (single-region and
 # combined) reuses this in-memory DataFrame instead of reloading networks.
 
-iberian_networks_folder = r"results/Iberic40_2035_industrial_clusters_all3h/all/networks"
-nordic_networks_folder = r"results/Noridcs100_2035_industrial_clusters_all3h/all/networks"
+iberian_networks_folder = r"results/Iberic40_2035_industrial_clusters_all3hrerun/all/networks"
+nordic_networks_folder = r"results/Noridcs100_2035_industrial_clusters_all3hrerun/all/networks"
 
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
 regions_iberian = gdp.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")

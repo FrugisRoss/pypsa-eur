@@ -2595,8 +2595,8 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
-n = pypsa.Network(r"results/Base_Cases/Iberic100_2035_10ccslimit_noFR_40nodes/all/networks/base_s_40__3h_2035.nc")
-# n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.5) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(r"results/Noridcs100_2035_35ccslimit_90%resemissions_biogasCC/all/networks/base_s_100__3h_2035.nc")
+n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 
  #%%
 FT_oil_prices_rc, methanol_prices_rc, FT_oil_prices_average_rc, methanol_prices_average_rc,methanol_cost_shares_rc = compute_ft_and_methanol_prices_renewable_cluster(n)

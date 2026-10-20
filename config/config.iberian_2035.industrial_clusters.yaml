@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Iberic40_2035_industrial_clusters_all3h"
+  prefix: "Iberic40_2035_industrial_clusters_all3hrerun"
   name: "all"
   scenarios:
     enable: false
