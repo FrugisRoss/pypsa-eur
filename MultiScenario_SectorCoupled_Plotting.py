@@ -2027,9 +2027,10 @@ def plot_cluster_electricity_balance_maps_two_regions(
     label_to_colors,
     nodes=None,
     unit="TWh",
-    circle_scale=0.007,
+    circle_scale=0.009,
     legend_sizes=(1, 5),
     fig_width=10.5,
+    max_fig_height=13.6,
     supply_ncol=1,
     consumption_ncol=1,
     save_path=None,
@@ -2063,7 +2064,18 @@ def plot_cluster_electricity_balance_maps_two_regions(
     legend_sizes : list of float
         Sizes shown in the circle-size legend, in ``unit``.
     fig_width : float
-        Figure width in inches; the height follows from the maps.
+        Maximum figure width in inches; the figure is then cropped to the
+        maps (no empty margins on the sides) and the height follows from the
+        maps. The default is the width of plot_co2_stored_balance_maps: both
+        figures included at the same scale (e.g. ``scale=0.6`` in LaTeX,
+        10.5 in -> 6.3 in, the text width of an A4 page) show the text at
+        the same size.
+    max_fig_height : float
+        Maximum figure height in inches. The default, scaled like the width
+        (10.5 in -> 6.3 in), gives ~8.2 in on the page: the text height of an
+        A4 page with 2.5 cm margins, leaving room for a caption of about
+        5 lines. If the maps would make the figure taller, they are shrunk
+        (and centred horizontally) until it fits.
     supply_ncol, consumption_ncol : int
         Number of columns of the supply and of the consumption legend.
     save_path : str or Path, optional
@@ -2129,26 +2141,19 @@ def plot_cluster_electricity_balance_maps_two_regions(
     # --------------------------------------------------
     ncols = len(region_cases)
     nrows = max(len(region_panels) for region_panels in panels)
-    # font sizes as in plot_co2_stored_balance_maps
-    title_size = 15
-    panel_title_size = 10
+    # font sizes as in plot_co2_stored_balance_maps, headers slightly larger
+    title_size = 17
+    panel_title_size = 11
     legend_fontsize = 9
     legend_title_fontsize = 10
 
     left, right, bottom = 0.1, 0.1, 0.1
     header_h = 0.45  # region titles above the columns
     panel_title_h = 0.3  # combination titles above each map
-    wspace, hspace = 0.3, 0.1
+    wspace, hspace = 0.25, 0.05
+    title_pad = 0.15  # minimum gap between the titles of neighbouring maps [in]
     legend_pad = 0.1  # gap between the maps and the legends [in]
-    legend_gap = 0.4  # gap between the legends [in]
-
-    map_w = (fig_width - left - right - wspace * (ncols - 1)) / ncols
-    map_h = map_w * aspect
-
-    # radius of the legend semicircles in points (checked against the
-    # circles actually drawn on the maps further down)
-    legend_radii = [np.sqrt(s) * circle_scale * map_w * 72 for s in legend_sizes]
-    max_radius = max(legend_radii, default=0)
+    legend_gap = 0.3  # gap between the legends [in]
 
     tech_rows = int(
         max(
@@ -2157,23 +2162,65 @@ def plot_cluster_electricity_balance_maps_two_regions(
         )
     )
     tech_legend_h = (legend_title_fontsize * 1.6 + tech_rows * legend_fontsize * 1.5) / 72
-    size_legend_h = (
-        legend_title_fontsize * 1.6
-        + len(legend_sizes) * (max_radius + legend_fontsize)
-    ) / 72
-    legend_h = max(tech_legend_h, size_legend_h) + 0.1
+
+    def legend_height(map_w):
+        # radius of the legend semicircles in points (checked against the
+        # circles actually drawn on the maps further down)
+        max_radius = max(
+            (np.sqrt(s) * circle_scale * map_w * 72 for s in legend_sizes), default=0
+        )
+        size_legend_h = (
+            legend_title_fontsize * 1.6
+            + len(legend_sizes) * (max_radius + legend_fontsize)
+        ) / 72
+        return max(tech_legend_h, size_legend_h) + 0.1
+
+    def figure_height(map_w):
+        maps_h = nrows * (panel_title_h + map_w * aspect) + (nrows - 1) * hspace
+        return header_h + maps_h + legend_pad + legend_height(map_w) + bottom
+
+    # maps as wide as the figure allows; narrower if the figure would be
+    # taller than max_fig_height (the legend shrinks with the maps, so the
+    # second pass keeps the figure within the limit)
+    map_w = (fig_width - left - right - wspace * (ncols - 1)) / ncols
+    for _ in range(2):
+        excess = figure_height(map_w) - max_fig_height
+        if excess > 0:
+            map_w -= excess / (nrows * aspect)
+
+    # columns far enough apart for the titles of neighbouring maps not to
+    # overlap (widest combination title measured with the figure fonts);
+    # the maps get narrower if the columns would then not fit the width
+    probe = plt.figure()
+    probe_renderer = probe.canvas.get_renderer()
+    title_w = max(
+        probe.text(0, 0, italic_combination_label(key), fontsize=panel_title_size)
+        .get_window_extent(probe_renderer).width / probe.dpi
+        for region_panels in panels for key, _, _ in region_panels
+    )
+    plt.close(probe)
+    wspace = max(wspace, title_w + title_pad - map_w)
+    map_w = min(map_w, (fig_width - left - right - wspace * (ncols - 1)) / ncols)
+
+    map_h = map_w * aspect
+    legend_h = legend_height(map_w)
+    fig_height = figure_height(map_w)
+
+    # figure only as wide as the maps, plus the part of the titles of the
+    # outer maps sticking out of them (the legends below use the same width)
+    maps_w = ncols * map_w + (ncols - 1) * wspace
+    left = right = max(left, (title_w - map_w) / 2 + title_pad / 2)
+    maps_left = left
+    fig_width = maps_w + left + right
 
     row_h = panel_title_h + map_h
-    fig_height = (
-        header_h + nrows * row_h + (nrows - 1) * hspace + legend_pad + legend_h + bottom
-    )
     # every axes is placed by hand, so no automatic layout (it is switched on
     # by the 'figure.autolayout' setting in some environments)
     fig = plt.figure(figsize=(fig_width, fig_height), layout="none")
 
     axes = []  # per region: list of axes
     for col, region_panels in enumerate(panels):
-        x0 = left + col * (map_w + wspace)
+        x0 = maps_left + col * (map_w + wspace)
         fig.text(
             (x0 + map_w / 2) / fig_width,
             1 - header_h / 2 / fig_height,
@@ -2787,10 +2834,10 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             "df": df_iberian,
             # (CR, BUYcap, SELLcap, BOTHcap)
             "combinations": [
-                (0.4, 0, 0, 0),
-                (0.1, 0, 0, 0.1),
-                (0.4, 0, 0, 0.1),
-                (0.0, 0, 0, 0.2),
+                (0.4, 0.25, 0, 0),
+                (0.1, 0, 0.1, 0),
+                (0.4, 0, 0.1, 0),
+                (0.0, 0, 0.2, 0),
             ],
             "regions": regions_iberian,
             # Spain and Portugal
@@ -2801,10 +2848,10 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             "df": df_nordic,
             # (CR, BUYcap, SELLcap, BOTHcap)
             "combinations": [
-                (0.3, 0, 0, 0),
-                (0, 0, 0, 0.1),
-                (0.4, 0, 0, 0.1),
-                (0.0, 0, 0, 0.2),
+                (0.3, 0.25, 0, 0),
+                (0, 0, 0.1, 0),
+                (0.4, 0, 0.1, 0),
+                (0.0, 0, 0.2, 0),
             ],
             "regions": regions_nordic,
             # Germany, Denmark, UK, Netherlands, Sweden and Norway
@@ -2814,7 +2861,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
     ],
     config_plotting,
     label_to_colors,
-    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegions.pdf",
+    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegions_Supplementary.pdf",
 )
 
 # %%
