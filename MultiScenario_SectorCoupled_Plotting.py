@@ -2001,9 +2001,26 @@ def pad_extent_to_aspect(extent, aspect):
     return [x0, x1, y0, y1]
 
 
+def italic_combination_label(key) -> str:
+    """
+    combination_label with the wildcard names in italics (as the heatmap
+    axis labels) and the values upright, using mathtext.
+    """
+    names = ["CR", "BUYcap", "SELLcap", "BOTHcap"]
+    return ", ".join(rf"$\mathit{{{name}}}$={value:.0%}" for name, value in zip(names, key))
+
+
 # The font family is fixed on each text when it is created, so the whole
-# figure has to be built inside this context.
-@mpl.rc_context({"font.family": HEATMAP_FONTS})
+# figure has to be built inside this context; the mathtext italics (wildcard
+# names in the titles) use the italic of the same font.
+@mpl.rc_context({
+    "font.family": HEATMAP_FONTS,
+    "mathtext.fontset": "custom",
+    "mathtext.rm": HEATMAP_FONTS[0],
+    "mathtext.it": f"{HEATMAP_FONTS[0]}:italic",
+    # unused, set only to avoid the missing 'cursive' font warning
+    "mathtext.cal": HEATMAP_FONTS[0],
+})
 def plot_cluster_electricity_balance_maps_two_regions(
     region_cases,
     config_plotting,
@@ -2011,7 +2028,7 @@ def plot_cluster_electricity_balance_maps_two_regions(
     nodes=None,
     unit="TWh",
     circle_scale=0.007,
-    legend_sizes=(10, 20),
+    legend_sizes=(1, 5),
     fig_width=10.5,
     supply_ncol=1,
     consumption_ncol=1,
@@ -2246,7 +2263,7 @@ def plot_cluster_electricity_balance_maps_two_regions(
                         ax.add_patch(poly)
                         theta1 = theta2
 
-            ax.set_title(combination_label(key), fontsize=panel_title_size)
+            ax.set_title(italic_combination_label(key), fontsize=panel_title_size)
 
     # --------------------------------------------------
     # Check of the circle sizes: measure, on the rendered maps, the radius
@@ -2773,7 +2790,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
                 (0.4, 0, 0, 0),
                 (0.1, 0, 0, 0.1),
                 (0.4, 0, 0, 0.1),
-                (0.0, 0, 0.0, 0.2),
+                (0.0, 0, 0, 0.2),
             ],
             "regions": regions_iberian,
             # Spain and Portugal
@@ -2787,12 +2804,12 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
                 (0.3, 0, 0, 0),
                 (0, 0, 0, 0.1),
                 (0.4, 0, 0, 0.1),
-                (0.0, 0, 0.0, 0.2),
+                (0.0, 0, 0, 0.2),
             ],
             "regions": regions_nordic,
             # Germany, Denmark, UK, Netherlands, Sweden and Norway
             "boundaries": [-10, 20, 47, 70],
-            "title": "Nordic Countries",
+            "title": "North Sea Region",
         },
     ],
     config_plotting,
