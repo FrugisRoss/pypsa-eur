@@ -37,7 +37,7 @@ label_to_colors = {
     'methanolisation renewable cluster': '#EB28B0',
     'H2 Electrolysis renewable cluster': "#473BF5",
     'solar-hsat renewable cluster': "#870000",
-    'solar renewable cluster': "#bff542",
+    'solar renewable cluster': '#fad13c',
     'battery charger renewable cluster': "#EF7627",
     'battery discharger renewable cluster': "#0d0f5c",
     'electricity renewable cluster': "#BEBBFA",

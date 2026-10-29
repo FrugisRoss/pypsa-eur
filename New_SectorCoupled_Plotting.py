@@ -2281,12 +2281,14 @@ def plot_cluster_electricity_balance_map(
     bus_size_factor=0.01,
     legend_bus_sizes=(10, 20),
     min_branch_width=0.3,
+    branch_width_scale=2,
+    loading_threshold=0.98,
 ):
     """AC balance map (as plot_balance_map.py) with the cluster balance.
 
-    Lines, links, flows and the regional price colormap are drawn exactly
-    as in the pypsa-eur AC balance map, with the price taken from the AC
-    buses outside the clusters. The semicircles show the annual electricity
+    Lines, links and flows are drawn exactly as in the pypsa-eur AC balance
+    map, without the regional price colormap; only the region borders of
+    `regions` are drawn. The semicircles show the annual electricity
     balance of the '<node> renewable cluster' bus (same bookkeeping as
     plot_electricity_balance_by_cluster), drawn at the node of the cluster.
     """
@@ -2393,19 +2395,57 @@ def plot_cluster_electricity_balance_map(
     line_flow = flow.get("Line")
     link_flow = flow.get("Link")
     transformer_flow = flow.get("Transformer")
-    branch_width_factor = settings["branch_factor"]
+    # scale the config width so the map lines and the legend stay consistent
+    branch_width_factor = settings["branch_factor"] * branch_width_scale
     flow_size_factor = settings["flow_factor"]
 
     # --------------------------------------------------
-    # Average electricity price outside the cluster (as in
-    # plot_balance_map.py, but without the cluster buses)
+    # Line colours: hours per year with loading >= loading_threshold
     # --------------------------------------------------
-    prices = weights @ n.buses_t.marginal_price[ac_buses] / weights.sum()
-    price = prices.rename(n.buses.location).groupby(level=0).mean()
-    regions = regions.copy()
-    regions["price"] = price.reindex(regions.index).fillna(0)
-    vmin = settings["vmin"] if settings["vmin"] is not None else regions.price.min()
-    vmax = settings["vmax"] if settings["vmax"] is not None else regions.price.max()
+    # AC lines: loading = p0 if > 0 else p1, over s_max_pu * s_nom_opt
+    cap = n.lines.s_nom_opt * n.lines.s_max_pu
+    p0 = n.lines_t.p0
+    ac_loading = p0.where(p0 > 0, n.lines_t.p1).div(cap, axis=1)
+
+    # DC lines: forward link '<name>' plus '<name>-reversed' link;
+    # loading = forward p0 if >= 1 else reversed p0, over forward p_nom_opt
+    dc_fwd = n.links.index[
+        (n.links.carrier == "DC") & ~n.links.index.str.endswith("-reversed")
+    ]
+    link_p0 = n.links_t.p0
+    fwd_p0 = link_p0.reindex(columns=dc_fwd, fill_value=0)
+    back_p0 = link_p0.reindex(columns=dc_fwd + "-reversed", fill_value=0).set_axis(
+        dc_fwd, axis=1
+    )
+    dc_loading = fwd_p0.where(fwd_p0 >= 1, back_p0).div(
+        n.links.p_nom_opt[dc_fwd], axis=1
+    )
+
+    # same loading -> hours step for both line types
+    loading = pd.concat({"Line": ac_loading, "Link": dc_loading}, axis=1)
+    hours_98 = (
+        loading.ge(loading_threshold)
+        .mul(n.snapshot_weightings.objective, axis=0)
+        .sum()
+    )
+
+    line_cmap = mcolors.LinearSegmentedColormap.from_list(
+        "red_scale",
+        ["#ffe5e5", "#b30000", "#4d0000"],
+    )
+    line_norm = plt.Normalize(vmin=0, vmax=max(hours_98.max(), 1))
+
+    def hours_to_color(h):
+        return mcolors.to_hex(line_cmap(line_norm(h)))
+
+    branch_colors = hours_98.map(hours_to_color)
+    line_colors = branch_colors["Line"].reindex(n.lines.index, fill_value=hours_to_color(0))
+
+    # links on the map are indexed by the forward name (reversed merged in);
+    # non-DC links keep the default pypsa link colour
+    link_colors = pd.Series("darkseagreen", index=link_widths.index, dtype=object)
+    dc_on_map = dc_fwd.intersection(link_colors.index)
+    link_colors[dc_on_map] = branch_colors["Link"][dc_on_map]
 
     # --------------------------------------------------
     # Figure
@@ -2417,7 +2457,7 @@ def plot_cluster_electricity_balance_map(
         layout="constrained",
     )
 
-    n.plot(
+    collections = n.plot(
         ax=ax,
         bus_size=bus_size * bus_size_factor,
         bus_color=colors,
@@ -2425,7 +2465,9 @@ def plot_cluster_electricity_balance_map(
         # floor the widths: PDF viewers draw hairlines at >= 1 px, which is
         # why the thin AC lines are visible in the pypsa-eur PDF maps
         line_width=(line_widths * branch_width_factor).clip(lower=min_branch_width),
+        line_color=line_colors,
         link_width=(link_widths * branch_width_factor).clip(lower=min_branch_width),
+        link_color=link_colors,
         line_flow=line_flow * flow_size_factor if line_flow is not None else None,
         link_flow=link_flow * flow_size_factor if link_flow is not None else None,
         transformer_flow=transformer_flow * flow_size_factor
@@ -2437,24 +2479,33 @@ def plot_cluster_electricity_balance_map(
         boundaries=boundaries,
     )
 
+    # region borders between the nodes, below the network
     regions.to_crs(crs.proj4_init).plot(
         ax=ax,
-        column="price",
-        cmap=settings["cmap"],
-        vmin=vmin,
-        vmax=vmax,
-        edgecolor="None",
-        linewidth=0,
+        facecolor="none",
+        edgecolor="lightgrey",
+        linewidth=0.3,
+        zorder=1,
     )
+
+    # DC links dotted: the link segments are in the order of link_widths.index
+    # (link_width, link_color and link_flow all share that index), so the
+    # flow arrows drawn by n.plot are kept
+    dc_dash = (0, (1, 1.5))
+    link_coll = collections["branches"].get("Link")
+    if link_coll is not None and len(link_coll.get_segments()) == len(link_widths):
+        link_coll.set_linestyle(
+            [dc_dash if l in dc_on_map else "solid" for l in link_widths.index]
+        )
+        link_coll.set_capstyle("round")
 
     ax.set_title("AC (renewable cluster balance)")
 
-    norm = plt.Normalize(vmin=vmin, vmax=vmax)
-    sm = plt.cm.ScalarMappable(cmap=settings["cmap"], norm=norm)
+    sm = plt.cm.ScalarMappable(cmap=line_cmap, norm=line_norm)
     cbr = fig.colorbar(
         sm,
         ax=ax,
-        label=f"Average Marginal Price outside the cluster [{settings['region_unit']}]",
+        label=f"Hours with line loading ≥ {loading_threshold:.0%} [h]",
         shrink=0.95,
         pad=0.03,
         aspect=50,
@@ -2531,11 +2582,24 @@ def plot_cluster_electricity_balance_map(
             legend_kw={"bbox_to_anchor": (0.25, 1), **legend_kwargs},
         )
 
+    line_type_legend = ax.legend(
+        handles=[
+            Line2D([], [], color="#666", linewidth=2, label="AC line"),
+            Line2D(
+                [], [], color="#666", linewidth=2, linestyle=dc_dash,
+                dash_capstyle="round", label="DC line",
+            ),
+        ],
+        bbox_to_anchor=(0.55, 1),
+        **legend_kwargs,
+    )
+    ax.add_artist(line_type_legend)
+
     plt.show()
     return bus_size
 
 #%%
-networks_folder=r"results/Iberic40_2035_industrial_clusters_all3h/all/networks"
+networks_folder=r"results/Iberic40_2035_industrial_clusters_all3hrerun/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
 regions=gdp.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_onshore_base_s_40.geojson').set_index("name")
 
@@ -2550,8 +2614,9 @@ df = pd.DataFrame(records)
 
 #%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 
+#%%
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
@@ -2559,19 +2624,55 @@ cluster_components = (
 
 cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
 
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.5) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.2)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.2), "path"].iloc[0]))
+cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
+
+#%%
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.1) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
+
+# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='01-01-2013', end_date='03-31-2013')
+# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='04-01-2013', end_date='06-30-2013')
+# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='07-01-2013', end_date='09-30-2013')
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='12-01-2013', end_date='12-31-2013')
+
+
+#%%
+n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+
+# n.buses_t.marginal_price.loc[n.snapshots.month == 1, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 2, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 3, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 4, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 5, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 6, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 7, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 8, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 9, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 10, "ES0 12"].plot(figsize=(10, 5))
+# n.buses_t.marginal_price.loc[n.snapshots.month == 11, "ES0 12"].plot(figsize=(10, 5))
+price_no_cluster=n.buses_t.marginal_price.loc[:, "ES0 12"]
+
+#%%
+n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
+price_cluster=n.buses_t.marginal_price.loc[:, "ES0 12"]
+
+diff=(price_cluster-price_no_cluster)
+diff.plot(figsize=(10, 5))
 # load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 31"])
 
 # # cluster_curtailments = plot_cluster_curtailment(n, "ES0 31")
 # cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "ES0 31")
 # cluster_curtailment_energy = plot_cluster_monthly_curtailment_absolute(n, "ES0 31")
 
-# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 31"],start_date='01-07-2013', end_date='01-14-2013')
-
-# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 31"],start_date='07-07-2013', end_date='07-14-2013')
-
 
 #%%
-
 
 
 plot_methanol_production_el_price_colormap_map(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
@@ -2584,7 +2685,7 @@ methanol_prices_cluster, average_price_of_methanol_cluster = calculate_price_of_
 
 #%%
 
-networks_folder=r"results/Noridcs100_2035_industrial_clusters_all3h/all/networks"
+networks_folder=r"results/Noridcs100_2035_industrial_clusters_all3hrerun/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())                        
 regions=gdp.read_file(r'resources/Noridcs100_2035_industrial_clusters/all/regions_onshore_base_s_100.geojson').set_index("name")
 
@@ -2595,8 +2696,34 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
-n = pypsa.Network(r"results/Noridcs100_2035_35ccslimit_90%resemissions_biogasCC/all/networks/base_s_100__3h_2035.nc")
-n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.5) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.2)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.2), "path"].iloc[0]))
+cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
+
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 1"],start_date='01-07-2013', end_date='01-14-2013')
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 1"],start_date='07-07-2013', end_date='07-14-2013')
+
+#%%
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+
+# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 1"],start_date='01-07-2013', end_date='01-14-2013')
+
+# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 1"],start_date='07-07-2013', end_date='07-14-2013')
+
+
 
  #%%
 FT_oil_prices_rc, methanol_prices_rc, FT_oil_prices_average_rc, methanol_prices_average_rc,methanol_cost_shares_rc = compute_ft_and_methanol_prices_renewable_cluster(n)
