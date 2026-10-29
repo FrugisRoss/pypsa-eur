@@ -2791,7 +2791,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             ],
             "regions": regions_nordic,
             # Germany, Denmark, UK, Netherlands, Sweden and Norway
-            "boundaries": [-10, 25, 47, 71.5],
+            "boundaries": [-10, 20, 47, 70],
             "title": "Nordic Countries",
         },
     ],
