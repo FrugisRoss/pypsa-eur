@@ -2861,7 +2861,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
     ],
     config_plotting,
     label_to_colors,
-    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegions_Supplementary.pdf",
+    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegions.pdf",
 )
 
 # %%
