@@ -2836,7 +2836,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             "combinations": [
                 (0.4, 0.25, 0, 0),
                 (0.1, 0, 0.1, 0),
-                (0.4, 0, 0.1, 0),
+                # (0.4, 0, 0.1, 0),
                 (0.0, 0, 0.2, 0),
             ],
             "regions": regions_iberian,
@@ -2850,7 +2850,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             "combinations": [
                 (0.3, 0.25, 0, 0),
                 (0, 0, 0.1, 0),
-                (0.4, 0, 0.1, 0),
+                # (0.4, 0, 0.1, 0),
                 (0.0, 0, 0.2, 0),
             ],
             "regions": regions_nordic,
