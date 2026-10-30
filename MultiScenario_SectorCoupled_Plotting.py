@@ -2834,9 +2834,13 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             "df": df_iberian,
             # (CR, BUYcap, SELLcap, BOTHcap)
             "combinations": [
-                (0.4, 0.25, 0, 0),
-                (0.1, 0, 0.1, 0),
-                # (0.4, 0, 0.1, 0),
+                # (0.4, 0, 0, 0),
+                # (0.1, 0, 0, 0.1),
+                # (0.0, 0, 0, 0.2),
+                # (0.4, 0.25, 0, 0),
+                # (0.1, 0, 0.1, 0),
+                (0.4, 0, 0, 0.1),
+                (0.4, 0, 0.1, 0),
                 (0.0, 0, 0.2, 0),
             ],
             "regions": regions_iberian,
@@ -2848,9 +2852,13 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             "df": df_nordic,
             # (CR, BUYcap, SELLcap, BOTHcap)
             "combinations": [
-                (0.3, 0.25, 0, 0),
-                (0, 0, 0.1, 0),
-                # (0.4, 0, 0.1, 0),
+                # (0.3, 0, 0, 0),
+                # (0, 0, 0, 0),
+                # (0.0, 0, 0, 0.2),
+                # (0.3, 0.25, 0, 0),
+                # (0, 0, 0.1, 0),
+                (0.4, 0, 0.1, 0),
+                (0.4, 0, 0.1, 0),
                 (0.0, 0, 0.2, 0),
             ],
             "regions": regions_nordic,
@@ -2861,7 +2869,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
     ],
     config_plotting,
     label_to_colors,
-    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegions.pdf",
+    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegions_Supplementary2.pdf",
 )
 
 # %%
