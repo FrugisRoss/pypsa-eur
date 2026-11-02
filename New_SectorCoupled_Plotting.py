@@ -2696,6 +2696,8 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
+#%%
+
 n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 
@@ -2707,13 +2709,22 @@ cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config
 
 n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.2), "path"].iloc[0]))
 cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
+#%%
 
+n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+cluster_components = (
+    [("link", idx) for idx in n.links.index if ("cluster" in idx  and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
+    + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
+)
 
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 1"],start_date='01-07-2013', end_date='01-14-2013')
 
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 1"],start_date='07-07-2013', end_date='07-14-2013')
+
+cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "DK1 0")
+
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK1 0"])
 
 #%%
 

@@ -2027,7 +2027,7 @@ def plot_cluster_electricity_balance_maps_two_regions(
     label_to_colors,
     nodes=None,
     unit="TWh",
-    circle_scale=0.009,
+    circle_scale=0.0065,
     legend_sizes=(1, 5),
     fig_width=10.5,
     max_fig_height=13.6,
@@ -2572,9 +2572,11 @@ VALUE_COLS = [
      ("Share of Curtailment in the Cluster[%]", YELLOWS),
 ]
 
+#%%
 PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
 PICTURES_DIR.mkdir(parents=True, exist_ok=True)
 
+#%%
 for axis, fixed, axis_range in [
     ("BUYcap", {"SELLcap": 0, "BOTHcap": 0}, (0, 1)),
     ("SELLcap", {"BUYcap": 0, "BOTHcap": 0}, (0, 0.5)),
@@ -2834,14 +2836,15 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             "df": df_iberian,
             # (CR, BUYcap, SELLcap, BOTHcap)
             "combinations": [
-                (0.4, 0, 0, 0),
-                (0.1, 0, 0, 0.1),
-                (0.0, 0, 0, 0.5),
+                # (0.4, 0, 0, 0),
+                # (0.1, 0, 0, 0.1),
+                # (0.0, 0, 0, 0.5),
                 # (0.4, 0.25, 0, 0),
                 # (0.1, 0, 0.1, 0),
                 # (0.4, 0, 0, 0.1),
                 # (0.4, 0, 0.1, 0),
                 # (0.0, 0, 0.2, 0),
+                (0.2, 0, 0, 0.2)
             ],
             "regions": regions_iberian,
             # Spain and Portugal
@@ -2852,14 +2855,16 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
             "df": df_nordic,
             # (CR, BUYcap, SELLcap, BOTHcap)
             "combinations": [
-                (0.3, 0, 0, 0),
-                (0, 0, 0, 0.1),
-                (0.0, 0, 0, 0.5),
-                # (0.3, 0.25, 0, 0),
+                # (0.3, 0, 0, 0),
+                # (0, 0, 0, 0.1),
+                # (0.0, 0, 0, 0.5),
+                #(0.3, 0.25, 0, 0),
                 # (0, 0, 0.1, 0),
                 # (0.4, 0, 0.1, 0),
                 # (0.4, 0, 0.1, 0),
                 # (0.0, 0, 0.2, 0),
+                (0.2, 0, 0, 0.2)
+
             ],
             "regions": regions_nordic,
             # Germany, Denmark, UK, Netherlands, Sweden and Norway
@@ -2869,7 +2874,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
     ],
     config_plotting,
     label_to_colors,
-    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegions.pdf",
+    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegionsPoster.pdf",
 )
 
 # %%
