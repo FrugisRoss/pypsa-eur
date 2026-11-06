@@ -2027,7 +2027,7 @@ def plot_cluster_electricity_balance_maps_two_regions(
     label_to_colors,
     nodes=None,
     unit="TWh",
-    circle_scale=0.0065,
+    circle_scale=0.009,
     legend_sizes=(1, 5),
     fig_width=10.5,
     max_fig_height=13.6,
