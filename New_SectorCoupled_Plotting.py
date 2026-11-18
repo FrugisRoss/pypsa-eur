@@ -50,7 +50,7 @@ label_to_colors = {
     'methanolisation renewable cluster': '#EB28B0',
     'H2 Electrolysis renewable cluster': "#473BF5",
     'solar-hsat renewable cluster': "#870000",
-    'solar renewable cluster': "#bff542",
+    'solar renewable cluster': '#fad13c',
     'battery charger renewable cluster': "#EF7627",
     'battery discharger renewable cluster': "#0d0f5c",
     'electricity renewable cluster': "#BEBBFA",
@@ -2112,7 +2112,7 @@ def plot_cluster_monthly_curtailment_share(n, node):
 
 
 
-def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None):
+def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None, n_base=None):
     """Plot the electricity balance of the renewable cluster AC bus per node.
 
     For every node in ``nodes`` the generators and links whose name contains
@@ -2251,9 +2251,24 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
                       color='red',
                       linewidth=1.5,
                       label='Electricity price outside the cluster')
+        # same price from the baseline network (no industrial clusters)
+        if n_base is not None:
+            el_price_base = n_base.buses_t.marginal_price.loc[:, node].loc[start_date:end_date]
+            ax_price.plot(el_price_base.index, el_price_base,
+                          '--',
+                          color='dimgray',
+                          linewidth=1.5,
+                          label='Electricity price outside the cluster (baseline)')
+        # electricity price at the cluster's own AC bus
+        el_price_cluster = n.buses_t.marginal_price.loc[:, f"{node} renewable cluster"].loc[start_date:end_date]
+        ax_price.plot(el_price_cluster.index, el_price_cluster,
+                      '--',
+                      color='darkblue',
+                      linewidth=1.5,
+                      label='Electricity price inside the cluster')
         ax_price.spines["right"]
         ax_price.tick_params(axis="y")
-        ax_price.set_ylabel("electricity price outside the cluster [euro/MWh]")
+        ax_price.set_ylabel("electricity price [euro/MWh]")
 
         # Layout / labels
         ax.set_xlim(start_date, end_date)
@@ -2606,6 +2621,8 @@ regions=gdp.read_file(r'resources/Iberic40_2035_industrial_clusters/all/regions_
 
 records = []
 for path in sorted(Path(networks_folder).glob("*.nc")):
+    if "-IC-" not in path.name:
+        continue
     wc = parse_wildcards(path)
     records.append({**wc, "path": path})
 
@@ -2614,13 +2631,20 @@ df = pd.DataFrame(records)
 
 #%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
 
-#%%
+n_base=pypsa.Network(networks_folder+r"/base_s_40_lv1.0_3h_2035.nc")
+
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='1-15-2013', end_date='01-30-2013', n_base=n_base)
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='7-15-2013', end_date='7-30-2013', n_base=n_base)
+
+#%%
 
 cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-15, 12, 35, 48])
 

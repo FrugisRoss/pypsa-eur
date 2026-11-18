@@ -2844,7 +2844,10 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
                 # (0.4, 0, 0, 0.1),
                 # (0.4, 0, 0.1, 0),
                 # (0.0, 0, 0.2, 0),
-                (0.2, 0, 0, 0.2)
+                (0.3, 0, 0, 0.1),
+                (0.2, 0, 0, 0.2),
+                (0.2, 0, 0, 0.3)
+
             ],
             "regions": regions_iberian,
             # Spain and Portugal
@@ -2863,7 +2866,9 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
                 # (0.4, 0, 0.1, 0),
                 # (0.4, 0, 0.1, 0),
                 # (0.0, 0, 0.2, 0),
-                (0.2, 0, 0, 0.2)
+                (0.3, 0, 0, 0.1),
+                (0.2, 0, 0, 0.2),
+                (0.2, 0, 0, 0.3)
 
             ],
             "regions": regions_nordic,
@@ -2874,7 +2879,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
     ],
     config_plotting,
     label_to_colors,
-    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegionsPoster.pdf",
+    # save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegionsPoster.pdf",
 )
 
 # %%
