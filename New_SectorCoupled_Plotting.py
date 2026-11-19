@@ -62,6 +62,7 @@ label_to_colors = {
     'Fischer-Tropsch renewable cluster': "#c99799",
     'Sabatier renewable cluster': '#debf12',
     'electricity renewable cluster both': "#BEBBFA",
+    'bidirectional grid connection': "#6e6e6e",
 
     'DAC': "#b93af0",
     'SMR CC': "#6b3a1f",
@@ -86,6 +87,7 @@ label_to_colors = {
 cluster_link_display_names = {
     'electricity renewable cluster': 'grid connection (sell) renewable cluster',
     'electricity renewable cluster back': 'grid connection (buy) renewable cluster',
+    'electricity renewable cluster both': 'bidirectional grid connection',
     'urban central DAC renewable cluster': 'DAC renewable cluster',
     'urban decentral DAC renewable cluster': 'DAC renewable cluster',
 }
@@ -1850,7 +1852,10 @@ def calculate_price_of_methanol_cluster(n):
     return methanol_prices, average_price_of_methanol
 
 
-def plot_load_duration_curve(n,tech_dictionary,nodes):
+def plot_load_duration_curve(n,tech_dictionary,nodes,
+                             title="Load Duration Curves for renewable technologies – {node}"):
+    # `title` may contain a "{node}" placeholder, which is replaced by the
+    # node name of each plot (e.g. title="Renewable cluster at {node}").
 
     h_per_snapshot = n.snapshot_weightings.generators.iloc[0]
 
@@ -1919,50 +1924,55 @@ def plot_load_duration_curve(n,tech_dictionary,nodes):
         # print(load_durations.head())
 
 
-        fig,ax=plt.subplots(figsize=(12,5), layout="constrained")
-        load_durations.plot(ax=ax,
-                        ylabel='Power [MW]',
-                        xlabel= 'hours',
-                        title="Load Duration Curves for renewable technologies",
-                        color=[label_to_colors.get(label, "#cccccc")  # fallback color
-                               for label in load_durations.columns]
-                        )
+        if load_durations.empty:
+            continue
 
-        ax.set_xlim(left=0)
-        ax.set_xlim(right=8760)
-        ax.set_ylim(bottom=0)
-        ax.set_ylim(top=max(pnoms.values())*1.1)
+        x_max = len(n.snapshots) * h_per_snapshot
 
-        tech_list = list(load_durations.columns)
-        lines = ax.get_lines()
+        fig, ax = plt.subplots(figsize=(12, 5), layout="constrained")
 
-        for i, techname in enumerate(tech_list):
-            color = lines[i].get_color()        # same color as load_duration curve
+        for techname in load_durations.columns:
+            color = label_to_colors.get(techname, "#cccccc")  # fallback color
 
-            # horizontal line
-            ax.hlines(y=pnoms[techname],
-                    xmin=0,
-                    xmax=8760,
-                    colors=color,
-                    linestyles="dashed")
-            # print (f"{techname} p_nom: {pnoms[techname]} MW")
+            # load duration curve
+            ax.plot(load_durations.index, load_durations[techname],
+                    color=color, linewidth=2, label=techname, zorder=3,
+                    solid_capstyle="round")
 
+            # nominal installed capacity, same colour, dashed and lighter
+            ax.hlines(y=pnoms[techname], xmin=0, xmax=x_max,
+                      colors=color, linestyles=(0, (5, 3)),
+                      linewidth=1.2, alpha=0.8, zorder=2)
+
+        # axes
+        ax.set_xlim(0, x_max)
+        ax.set_ylim(0, max(pnoms.values()) * 1.1)
+        ax.set_xlabel("hours")
+        ax.set_ylabel("Power [MW]")
+        ax.grid(False)
+
+        # title: "{node}" in the string is replaced by the node name
+        if title:
+            ax.set_title(title.replace("{node}", node), loc="left",
+                         fontsize=14, fontweight="bold", pad=12)
 
         # single legend: the technology curves, followed by one entry
         # explaining the dashed nominal-power lines
         handles, labels = ax.get_legend_handles_labels()
         spacer = Line2D([0], [0], color='none')
-        nominal_power_line = Line2D([0], [0], color='black', linestyle='dashed')
+        nominal_power_line = Line2D([0], [0], color='#555555',
+                                    linestyle=(0, (5, 3)), linewidth=1.2)
         handles += [spacer, nominal_power_line]
-        labels += ['', 'Nominal Installed Capacity']
+        labels += ['', 'Nominal installed capacity']
 
         ax.legend(
             handles,
             labels,
             loc='center left',
             bbox_to_anchor=(1.02, 0.5),
-            frameon=True,
-            fontsize=12,
+            frameon=False,
+            fontsize=11,
+            handlelength=2.5,
         )
 
         plt.show()
@@ -2649,21 +2659,27 @@ df = pd.DataFrame(records)
 
 #%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
 
 n_base=pypsa.Network(networks_folder+r"/base_s_40_lv1.0_3h_2035.nc")
 
-#%%
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
 
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 11"])
+
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 4"])
+
+
+#%%
+
+
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='1-1-2013', end_date='12-31-2013', n_base=n_base)
 
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 11"],start_date='1-1-2013', end_date='12-31-2013', n_base=n_base)
 
-#%%
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='1-15-2013', end_date='01-30-2013', n_base=n_base)
 
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='7-15-2013', end_date='7-30-2013', n_base=n_base)
@@ -2694,8 +2710,6 @@ n = pypsa.Network(str(df.loc[(df.CR == 0.1) & (df.BUYcap == 0.0) & (df.SELLcap =
 # el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='07-01-2013', end_date='09-30-2013')
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='12-01-2013', end_date='12-31-2013')
 
-
-#%%
 n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 
 # n.buses_t.marginal_price.loc[n.snapshots.month == 1, "ES0 12"].plot(figsize=(10, 5))
@@ -2711,13 +2725,12 @@ n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap =
 # n.buses_t.marginal_price.loc[n.snapshots.month == 11, "ES0 12"].plot(figsize=(10, 5))
 price_no_cluster=n.buses_t.marginal_price.loc[:, "ES0 12"]
 
-#%%
+
 n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
 price_cluster=n.buses_t.marginal_price.loc[:, "ES0 12"]
 
 diff=(price_cluster-price_no_cluster)
 diff.plot(figsize=(10, 5))
-# load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 31"])
 
 # # cluster_curtailments = plot_cluster_curtailment(n, "ES0 31")
 # cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "ES0 31")
