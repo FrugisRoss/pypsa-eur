@@ -2010,6 +2010,23 @@ def italic_combination_label(key) -> str:
     return ", ".join(rf"$\mathit{{{name}}}$={value:.0%}" for name, value in zip(names, key))
 
 
+def cluster_mean_price(n) -> pd.Series:
+    """
+    Electricity price of the renewable cluster of every node, averaged over
+    the year (weighted by the snapshot weightings), in €/MWh. The price of
+    the cluster at node ``<node>`` is the marginal price of the bus
+    ``'<node> renewable cluster'``; the Series is indexed by node name.
+    """
+    weights = n.snapshot_weightings.generators
+    cluster_buses = n.buses_t.marginal_price.columns[
+        n.buses_t.marginal_price.columns.str.endswith(" renewable cluster")
+    ]
+    price = n.buses_t.marginal_price[cluster_buses]
+    mean_price = price.mul(weights, axis=0).sum() / weights.sum()
+    mean_price.index = mean_price.index.str.removesuffix(" renewable cluster")
+    return mean_price
+
+
 # The font family is fixed on each text when it is created, so the whole
 # figure has to be built inside this context; the mathtext italics (wildcard
 # names in the titles) use the italic of the same font.
@@ -2033,6 +2050,10 @@ def plot_cluster_electricity_balance_maps_two_regions(
     max_fig_height=13.6,
     supply_ncol=1,
     consumption_ncol=1,
+    price_cmap="Greens",
+    price_label="Mean cluster electricity price",
+    price_unit="€/MWh",
+    colorbar_width=1.6,
     save_path=None,
 ):
     """
@@ -2078,6 +2099,15 @@ def plot_cluster_electricity_balance_maps_two_regions(
         (and centred horizontally) until it fits.
     supply_ncol, consumption_ncol : int
         Number of columns of the supply and of the consumption legend.
+    price_cmap, price_label, price_unit :
+        The region of every node is coloured by the electricity price of its
+        renewable cluster averaged over the year (see cluster_mean_price),
+        on a scale common to all the maps; the other regions are left
+        uncoloured. Only the nodes with a semicircle (radius > 0) are
+        coloured, and only they set the colour scale. The colorbar, titled ``price_label [price_unit]``, is placed
+        after the supply and consumption legends.
+    colorbar_width : float
+        Minimum width of the colorbar in inches (widened to its title).
     save_path : str or Path, optional
         If given, the figure is saved there.
 
@@ -2091,11 +2121,13 @@ def plot_cluster_electricity_balance_maps_two_regions(
     # Data: networks of every region in the order of its combinations
     # --------------------------------------------------
     panels = []  # per region: list of (combination, network, balance)
+    prices = []  # per region: list of mean cluster price per node
     carrier_colors = {}
     for case in region_cases:
         rows = filter_networks(case["df"], case["combinations"])
         paths = {(r.CR, r.BUYcap, r.SELLcap, r.BOTHcap): r.path for r in rows.itertuples()}
         region_panels = []
+        region_prices = []
         for combo in case["combinations"]:
             match = [k for k in paths if np.allclose(k, combo)]
             if not match:
@@ -2103,6 +2135,14 @@ def plot_cluster_electricity_balance_maps_two_regions(
             n = pypsa.Network(str(paths[match[0]]))
             bus_size = cluster_electricity_balance(n, nodes=nodes, unit=unit)
             region_panels.append((match[0], n, bus_size))
+            # price colour only where a semicircle is drawn: radius
+            # sqrt(total) * unit_radius > 0 for the supply or consumption half
+            supply = bus_size.clip(lower=0).groupby(level="bus").sum()
+            consumption = bus_size.clip(upper=0).abs().groupby(level="bus").sum()
+            radius = np.sqrt(np.maximum(supply, consumption))
+            drawn_nodes = radius.index[radius > 0]
+            price = cluster_mean_price(n).reindex(case["regions"].index)
+            region_prices.append(price.where(price.index.isin(drawn_nodes)))
 
             for c in bus_size.index.unique("carrier"):
                 color = label_to_colors.get(c, n.carriers.color.get(c, ""))
@@ -2110,6 +2150,12 @@ def plot_cluster_electricity_balance_maps_two_regions(
                     color = "lightgrey"
                 carrier_colors.setdefault(c, color)
         panels.append(region_panels)
+        prices.append(region_prices)
+
+    # price colour scale common to all the maps (nodes shown on the maps only)
+    shown_price = pd.concat([p for region_prices in prices for p in region_prices]).dropna()
+    price_norm = plt.Normalize(vmin=shown_price.min(), vmax=shown_price.max())
+    price_cmap = plt.get_cmap(price_cmap)
 
     def get_label(c):
         return c.replace(" renewable cluster", "")
@@ -2162,6 +2208,10 @@ def plot_cluster_electricity_balance_maps_two_regions(
         )
     )
     tech_legend_h = (legend_title_fontsize * 1.6 + tech_rows * legend_fontsize * 1.5) / 72
+    # colorbar: title, bar and tick labels below it
+    cbar_bar_h = 0.12
+    cbar_title_h = legend_title_fontsize * 1.6 / 72
+    cbar_legend_h = cbar_title_h + cbar_bar_h + (legend_fontsize * 1.6 + 4) / 72
 
     def legend_height(map_w):
         # radius of the legend semicircles in points (checked against the
@@ -2173,7 +2223,7 @@ def plot_cluster_electricity_balance_maps_two_regions(
             legend_title_fontsize * 1.6
             + len(legend_sizes) * (max_radius + legend_fontsize)
         ) / 72
-        return max(tech_legend_h, size_legend_h) + 0.1
+        return max(tech_legend_h, size_legend_h, cbar_legend_h) + 0.1
 
     def figure_height(map_w):
         maps_h = nrows * (panel_title_h + map_w * aspect) + (nrows - 1) * hspace
@@ -2248,17 +2298,24 @@ def plot_cluster_electricity_balance_maps_two_regions(
     # --------------------------------------------------
     # Maps
     # --------------------------------------------------
-    for case, region_panels, region_axes, extent in zip(region_cases, panels, axes, extents):
+    for case, region_panels, region_prices, region_axes, extent in zip(
+        region_cases, panels, prices, axes, extents
+    ):
         regions_crs = case["regions"].to_crs(crs.proj4_init)
 
-        for ax, (key, n, bus_size) in zip(region_axes, region_panels):
+        for ax, (key, n, bus_size), price in zip(region_axes, region_panels, region_prices):
             ax.set_extent(extent, crs=crs)
             ax.add_feature(cfeature.OCEAN, facecolor="white", zorder=0)
             ax.add_feature(cfeature.LAND, facecolor="whitesmoke", zorder=0)
-            # region borders between the nodes
+            # regions coloured by the mean price of the cluster at the node,
+            # with the borders between the nodes
+            region_colors = [
+                "none" if np.isnan(v) else mcolors.to_hex(price_cmap(price_norm(v)))
+                for v in price.reindex(regions_crs.index)
+            ]
             regions_crs.plot(
                 ax=ax,
-                facecolor="none",
+                color=region_colors,
                 edgecolor="lightgrey",
                 linewidth=0.3,
                 zorder=0.5,
@@ -2408,17 +2465,45 @@ def plot_cluster_electricity_balance_maps_two_regions(
     # keep the legends close together, as a group starting at the left edge
     # of the maps and with the titles on the same line (sizes and positions
     # measured once drawn); the gap shrinks if the group would not fit
+    # (the price colorbar is the last item of the group, as wide as its title)
+    cbar_title = f"{price_label} [{price_unit}]"
     fig.canvas.draw()
+    renderer = fig.canvas.get_renderer()
     lax_box = lax.get_window_extent()
+    probe_title = lax.text(
+        0, 0, cbar_title, fontsize=legend_title_fontsize, weight="bold"
+    )
+    cbar_w = max(colorbar_width, probe_title.get_window_extent(renderer).width / fig.dpi)
+    probe_title.remove()
     widths = [leg.get_window_extent().width / lax_box.width for leg in legends]
+    widths.append(cbar_w / (fig_width - left - right))
     title_tops = [leg.get_title().get_window_extent().y1 for leg in legends]
-    n_gaps = max(len(legends) - 1, 1)
+    n_gaps = max(len(widths) - 1, 1)
     gap = min(legend_gap / (fig_width - left - right), (1 - sum(widths)) / n_gaps)
     x = 0
     for leg, width, title_top in zip(legends, widths, title_tops):
         y = 1 - (title_top - min(title_tops)) / lax_box.height
         leg.set_bbox_to_anchor((x, y), transform=lax.transAxes)
         x += width + gap
+
+    # colorbar below its title, the title top level with the legend titles
+    titles_top = (min(title_tops) - lax_box.y0) / lax_box.height
+    bar_top = titles_top - cbar_title_h / legend_h
+    cax = lax.inset_axes([x, bar_top - cbar_bar_h / legend_h, widths[-1], cbar_bar_h / legend_h])
+    cbar = fig.colorbar(
+        plt.cm.ScalarMappable(cmap=price_cmap, norm=price_norm),
+        cax=cax,
+        orientation="horizontal",
+    )
+    cbar.outline.set_edgecolor("None")
+    cbar.ax.tick_params(labelsize=legend_fontsize, length=2, pad=2)
+    cax.set_title(
+        cbar_title,
+        loc="left",
+        fontsize=legend_title_fontsize,
+        weight="bold",
+        pad=legend_title_fontsize * 0.4,
+    )
 
     if save_path is not None:
         fig.savefig(save_path, dpi=300, bbox_inches="tight")
@@ -2845,8 +2930,8 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
                 # (0.4, 0, 0.1, 0),
                 # (0.0, 0, 0.2, 0),
                 (0.3, 0, 0, 0.1),
-                (0.2, 0, 0, 0.2),
-                (0.2, 0, 0, 0.3)
+                (0.1, 0, 0, 0.3),
+                # (0.2, 0, 0, 0.2)
 
             ],
             "regions": regions_iberian,
@@ -2867,8 +2952,8 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
                 # (0.4, 0, 0.1, 0),
                 # (0.0, 0, 0.2, 0),
                 (0.3, 0, 0, 0.1),
-                (0.2, 0, 0, 0.2),
-                (0.2, 0, 0, 0.3)
+                (0.1, 0, 0, 0.3),
+                # (0.2, 0, 0, 0.2)
 
             ],
             "regions": regions_nordic,
@@ -2879,7 +2964,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
     ],
     config_plotting,
     label_to_colors,
-    # save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegionsPoster.pdf",
+    save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegionsElHeatmap.pdf",
 )
 
 # %%

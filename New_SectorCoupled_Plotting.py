@@ -19,6 +19,7 @@ import plotly.graph_objects as go
 import re
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+import matplotlib.dates as mdates
 import pandas as pd
 import pypsa
 from packaging.version import Version, parse
@@ -2148,7 +2149,7 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
 
             ts = (
                 n.generators_t["p"].loc[:, generators] / 10**3
-            )*h_per_snapshot
+            )
 
             if clean_name in el_balance_cluster[node]:
                 el_balance_cluster[node][clean_name] += ts
@@ -2167,14 +2168,14 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
 
                 if "methanolisation" in links:
                     # methanolisation electricity input is on bus2
-                    el_balance_cluster[node][clean_name]= (n.links_t["p2"].loc[:, links]/-10**3)*h_per_snapshot
+                    el_balance_cluster[node][clean_name]= (n.links_t["p2"].loc[:, links]/-10**3)
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif "Electrolysis" in links:
-                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)*h_per_snapshot
+                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif "DAC" in links:
                     # DAC electricity input is on bus0
-                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)*h_per_snapshot
+                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif "Fischer-Tropsch" in links:
                     # Fischer-Tropsch has no electricity bus (bus0=H2, bus1=oil,
@@ -2183,27 +2184,26 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
                 elif "battery charger" in links:
                     # charger electricity input is on bus0 (p1 is already reduced
                     # by the inverter efficiency, so it would not balance)
-                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)*h_per_snapshot
+                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif "battery discharger" in links:
-                    el_balance_cluster[node][clean_name]= (n.links_t["p1"].loc[:, links]/-10**3)*h_per_snapshot
+                    el_balance_cluster[node][clean_name]= (n.links_t["p1"].loc[:, links]/-10**3)
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif f"{node} electricity renewable cluster"==links:
-                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)*h_per_snapshot
+                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/-10**3)
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif f"{node} electricity renewable cluster back"==links:
-                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/10**3)*h_per_snapshot
+                    el_balance_cluster[node][clean_name]= (n.links_t["p0"].loc[:, links]/10**3)
                     el_balance_cluster[node][clean_name] = el_balance_cluster[node][clean_name].fillna(0)
                 elif f"{node} electricity renewable cluster both"==links:
                     # bidirectional grid link carries both signs, which breaks the
                     # stacked area plot; split it into two single-signed columns.
-                    # positive p0 -> "grid connection (buy)",
-                    # negative p0 -> "grid connection (sell)"
-                    ts = (n.links_t["p0"].loc[:, links]/10**3)*h_per_snapshot
-                    el_balance_cluster[node]["grid connection (buy)"] = ts.clip(lower=0)
-                    el_balance_cluster[node]["grid connection (buy)"] = el_balance_cluster[node]["grid connection (buy)"].fillna(0)
-                    el_balance_cluster[node]["grid connection (sell)"] = ts.clip(upper=0)
-                    el_balance_cluster[node]["grid connection (sell)"] = el_balance_cluster[node]["grid connection (sell)"].fillna(0)
+                    # positive p0 -> grid connection (buy),
+                    # negative p0 -> grid connection (sell)
+                    # (names must match the keys in label_to_colors)
+                    ts = (n.links_t["p0"].loc[:, links]/10**3)
+                    el_balance_cluster[node]["grid connection (buy) renewable cluster"] = ts.clip(lower=0).fillna(0)
+                    el_balance_cluster[node]["grid connection (sell) renewable cluster"] = ts.clip(upper=0).fillna(0)
 
         # print(el_balance_cluster[node])
         # net balance from the aggregated series, computed before masking so it
@@ -2226,28 +2226,36 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
         col_order = el_balance_cluster[node].abs().max().sort_values().index
         el_balance_cluster[node] = el_balance_cluster[node][col_order]
 
-        figure,ax=plt.subplots(figsize=(10,6))
-        ax.plot(el_balance_cluster[node].index,el_net[node]["el_net"],
-                '--', 
-                color=label_to_colors['Net Balance'], 
-                linewidth=2, 
-                zorder=10, 
-                label='Net Balance')
-        el_balance_cluster[node].plot.area(ax=ax,
-                                    color=[
-                                        label_to_colors.get(label, "#cccccc")  # fallback color
-                                        for label in el_balance_cluster[node].columns
-                                    ]
-                                    )
+        # only plot the requested window, and drop technologies that are
+        # negligible within it so the legend only lists what is visible
+        plot_df = el_balance_cluster[node].loc[start_date:end_date]
+        plot_df = plot_df.loc[:, plot_df.abs().max() > 0.001]
+        net = el_net[node]["el_net"].loc[start_date:end_date]
 
+        figure, ax = plt.subplots(figsize=(13, 6.5))
 
-        # electricity price at the node's AC bus (outside the cluster) on a
-        # second y-axis on the right. Only the plotted window is drawn so the
-        # price axis scales to what is shown
-        el_price = n.buses_t.marginal_price.loc[:, node].loc[start_date:end_date]
+        plot_df.plot.area(
+            ax=ax,
+            linewidth=0,
+            alpha=0.9,
+            # use plain matplotlib dates (not pandas' period axis) so the areas
+            # share the x-axis with ax.plot / set_xlim / mdates formatting
+            x_compat=True,
+            color=[label_to_colors.get(label, "#cccccc") for label in plot_df.columns],
+            legend=False,
+        )
+        ax.plot(net.index, net,
+                color=label_to_colors['Net Balance'],
+                linewidth=1.5,
+                zorder=10,
+                label='Net balance')
+        ax.axhline(0, color="black", linewidth=0.8, zorder=5)
+
+        # electricity prices on a second y-axis on the right; only the plotted
+        # window is drawn so the price axis scales to what is shown
         ax_price = ax.twinx()
+        el_price = n.buses_t.marginal_price.loc[:, node].loc[start_date:end_date]
         ax_price.plot(el_price.index, el_price,
-                      '--',
                       color='red',
                       linewidth=1.5,
                       label='Electricity price outside the cluster')
@@ -2256,30 +2264,40 @@ def plot_electricity_balance_by_cluster(n, nodes, start_date=None, end_date=None
             el_price_base = n_base.buses_t.marginal_price.loc[:, node].loc[start_date:end_date]
             ax_price.plot(el_price_base.index, el_price_base,
                           '--',
-                          color='dimgray',
+                          color='red',
+                          alpha=0.6,
                           linewidth=1.5,
                           label='Electricity price outside the cluster (baseline)')
         # electricity price at the cluster's own AC bus
         el_price_cluster = n.buses_t.marginal_price.loc[:, f"{node} renewable cluster"].loc[start_date:end_date]
         ax_price.plot(el_price_cluster.index, el_price_cluster,
-                      '--',
-                      color='darkblue',
+                      color='navy',
                       linewidth=1.5,
                       label='Electricity price inside the cluster')
-        ax_price.spines["right"]
-        ax_price.tick_params(axis="y")
-        ax_price.set_ylabel("electricity price [euro/MWh]")
+        ax_price.set_ylabel("Electricity price [€/MWh]")
+        ax_price.set_ylim(bottom=min(0, ax_price.get_ylim()[0]))
 
         # Layout / labels
-        ax.set_xlim(start_date, end_date)
+        ax.set_xlim(plot_df.index[0], plot_df.index[-1])
+        ax.xaxis.set_major_locator(mdates.DayLocator(interval=2))
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
+        ax.set_xlabel("")
+        ax.grid(axis="y", linestyle=":", alpha=0.6)
+        ax.set_ylabel("Power [GW]\n← consumption | production →")
+        ax.set_title(f"Electricity balance of the renewable cluster at {node}",
+                     fontsize=13, fontweight="bold")
+        for spine in ("top",):
+            ax.spines[spine].set_visible(False)
+            ax_price.spines[spine].set_visible(False)
 
-
-        ax.set_ylabel("Power [GWh]")
-        ax.set_title(f"Electricity Production and Consumption in the Cluster of {node}")
+        # one combined legend below the plot; drop the long
+        # " renewable cluster" suffix from the technology names
         handles, labels = ax.get_legend_handles_labels()
         price_handles, price_labels = ax_price.get_legend_handles_labels()
+        labels = [l.replace(" renewable cluster", "") for l in labels]
         ax.legend(handles + price_handles, labels + price_labels,
-                  loc="center left", bbox_to_anchor=(1.12, 0.5), frameon=True)
+                  loc="upper center", bbox_to_anchor=(0.5, -0.08),
+                  ncol=3, frameon=False, fontsize=9)
         figure.tight_layout()
 
     return el_balance_cluster
@@ -2631,18 +2649,28 @@ df = pd.DataFrame(records)
 
 #%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
 
 n_base=pypsa.Network(networks_folder+r"/base_s_40_lv1.0_3h_2035.nc")
 
+#%%
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
 
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='1-1-2013', end_date='12-31-2013', n_base=n_base)
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 11"],start_date='1-1-2013', end_date='12-31-2013', n_base=n_base)
+
+#%%
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='1-15-2013', end_date='01-30-2013', n_base=n_base)
 
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 12"],start_date='7-15-2013', end_date='7-30-2013', n_base=n_base)
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 11"],start_date='1-15-2013', end_date='01-30-2013', n_base=n_base)
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["ES0 11"],start_date='7-15-2013', end_date='7-30-2013', n_base=n_base)
 
 #%%
 
@@ -2720,9 +2748,31 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 
 df = pd.DataFrame(records)
 
-#%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+
+n_base=pypsa.Network(networks_folder+r"/base_s_100_lv1.0_3h_2035.nc")
+
+cluster_components = (
+    [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
+    + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
+)
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='1-1-2013', end_date='12-31-2013', n_base=n_base)
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DE0 7"],start_date='1-1-2013', end_date='12-31-2013', n_base=n_base)
+
+#%%
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='1-15-2013', end_date='01-30-2013', n_base=n_base)
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='7-15-2013', end_date='7-30-2013', n_base=n_base)
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DE0 7"],start_date='1-15-2013', end_date='01-30-2013', n_base=n_base)
+
+el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DE0 7"],start_date='7-15-2013', end_date='7-30-2013', n_base=n_base)
+
+
+#%%
 cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 
 n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.5) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
@@ -2735,7 +2785,7 @@ n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap =
 cluster_el_balance_map = plot_cluster_electricity_balance_map(n, regions, config_plotting, label_to_colors, boundaries=[-10, 28, 46, 73])
 #%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
 
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx  and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
