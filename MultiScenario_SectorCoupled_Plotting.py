@@ -2530,7 +2530,12 @@ def plot_load_duration_curves_combination(
     large_height=1.5,
     small_height=0.9,
     panel_gap=0.3,
-    bottom_margin=0.5,
+    bottom_margin=1.1,
+    storages=(
+        ("battery", "Battery storage", "MWh"),
+        ("co2 stored", "CO₂ storage", "t"),
+        ("H2 Store", "H₂ storage", "MWh H₂"),
+    ),
     save_path=None,
 ):
     """
@@ -2565,15 +2570,25 @@ def plot_load_duration_curves_combination(
         the bottom row (None: top row only).
     min_generator_capacity : float
         Generators below this capacity [MW] are not plotted.
+    storages : tuple of (store name, label, unit)
+        Stores whose capacity (e_nom_opt of '<node> <store name> renewable
+        cluster') is written below the column of every node, one line
+        each ("-" if the node has no such store), with in parentheses the
+        equivalent load hours: capacity / full-load consumption of what the
+        store supplies:
+          - battery: electrolysers + methanolisation + DAC [MW el]
+          - H2 Store: methanolisation + Fischer-Tropsch [MW H2]
+          - co2 stored: methanolisation + Fischer-Tropsch [t CO2/h]
     save_path : str or Path, optional
         If given, the figure is saved there.
 
     Returns
     -------
-    dict {(region title, node): (load_durations DataFrame, pnoms dict)}
+    dict {(region title, node): (load_durations DataFrame, pnoms dict,
+                                 dict {store name: (e_nom_opt, equivalent load hours)})}
     """
     results = {}
-    columns_data = []  # per node, in plotting order: (node, load_durations or None, pnoms)
+    columns_data = []  # per node, in plotting order: (node, load_durations or None, pnoms, storage capacities)
     x_max = 0
 
     for i, case in enumerate(nodes):
@@ -2601,6 +2616,47 @@ def plot_load_duration_curves_combination(
 
         for node in case["nodes"]:
             curves, pnoms = {}, {}
+
+            # storage capacities of the cluster: e_nom_opt of '<node> <store> renewable cluster'
+            e_noms = {}
+            for store, _, _ in storages:
+                name = f"{node} {store} renewable cluster"
+                e_noms[store] = n.stores.at[name, "e_nom_opt"] if name in n.stores.index else None
+
+            # capacity of the cluster link '<node> <link> renewable cluster' (0 if
+            # missing), times |efficiency attribute| if one is given
+            link_capacity = lambda link, eff=None: (
+                0.0 if f"{node} {link} renewable cluster" not in n.links.index
+                else n.links.at[f"{node} {link} renewable cluster", "p_nom_opt"]
+                * (1.0 if eff is None else abs(n.links.at[f"{node} {link} renewable cluster", eff]))
+            )
+            dac_links = n.links.index[
+                n.links.index.str.startswith(node + " ")
+                & n.links.index.str.endswith("DAC renewable cluster")
+            ]
+            # full-load consumption of what every store supplies
+            served = {
+                # electricity [MW]: electrolysers (p_nom on the electricity bus),
+                # methanolisation (p_nom * |efficiency2|) and DAC (p_nom on the
+                # electricity bus), as their nominal capacities in the plot
+                "battery": (link_capacity("H2 Electrolysis")
+                            + link_capacity("methanolisation", "efficiency2")
+                            + n.links.loc[dac_links, "p_nom_opt"].sum()),
+                # H2 [MW H2]: methanolisation and Fischer-Tropsch (p_nom on the H2 bus)
+                "H2 Store": link_capacity("methanolisation") + link_capacity("Fischer-Tropsch"),
+                # CO2 [t/h]: the efficiencies are per MWh H2 input, so the CO2
+                # intake is p_nom * |efficiency3| (methanolisation) and
+                # p_nom * |efficiency2| (Fischer-Tropsch)
+                "co2 stored": (link_capacity("methanolisation", "efficiency3")
+                               + link_capacity("Fischer-Tropsch", "efficiency2")),
+            }
+            # equivalent load hours: storage capacity / full-load consumption
+            storage_info = {
+                store: (e_noms[store],
+                        e_noms[store] / served[store]
+                        if e_noms[store] is not None and served.get(store, 0) > 1e-9 else None)
+                for store, _, _ in storages
+            }
 
             for techtype, techname in components:
                 if (node + " ") not in techname:
@@ -2633,11 +2689,11 @@ def plot_load_duration_curves_combination(
                 # keep an empty column so the nodes stay aligned with the violins
                 print(f"{region}: no renewable cluster component in operation at {node} "
                       f"for {combination_label(combination)}")
-                columns_data.append((node, None, {}))
+                columns_data.append((node, None, {}, storage_info))
                 continue
             load_durations.index = load_durations.index * h_per_snapshot  # hours
-            columns_data.append((node, load_durations, pnoms))
-            results[(region, node)] = (load_durations, pnoms)
+            columns_data.append((node, load_durations, pnoms, storage_info))
+            results[(region, node)] = (load_durations, pnoms, storage_info)
 
     if not columns_data:
         print(f"No load duration curve to plot for {combination_label(combination)}")
@@ -2664,14 +2720,14 @@ def plot_load_duration_curves_combination(
     # same y axis for all the nodes in a row: up to the largest nominal
     # capacity of that row over all the nodes (x 1.1 for readability)
     row_max = [0.0 for _ in row_specs]
-    for _, load_durations, pnoms in columns_data:
+    for _, load_durations, pnoms, _ in columns_data:
         for tech, pnom in pnoms.items():
             r = 1 if two_rows and pnom <= small_capacity else 0
             row_max[r] = max(row_max[r], pnom)
 
     tech_handles = {}  # legend entries, in order of appearance
 
-    for k, (node, load_durations, pnoms) in enumerate(columns_data):
+    for k, (node, load_durations, pnoms, storage_info) in enumerate(columns_data):
         x0 = left_margin + k * (node_width + node_gap)
 
         if load_durations is None:
@@ -2726,6 +2782,15 @@ def plot_load_duration_curves_combination(
         fig.text((x0 + node_width / 2) / W, (H - 0.08) / H, node_label.replace("{node}", node),
                  ha="center", va="top", fontsize=11, fontweight="bold")
 
+        # storage capacities below the column (under the hour axis), one line each
+        for j, (store, store_label, unit) in enumerate(storages):
+            e_nom, hours = storage_info[store]
+            value = f"{e_nom:,.1f} {unit}" if e_nom is not None else "-"
+            if hours is not None:
+                value += f" ({hours:,.2f} h)"
+            fig.text((x0 + node_width / 2) / W, (bottom_margin - 0.5 - j * 0.17) / H,
+                     f"{store_label}: {value}", ha="center", va="top", fontsize=8)
+
     # legends on the right: technologies next to the top row, nominal
     # installed capacity next to the bottom row
     legend_x = (left_margin + n_nodes * node_width + (n_nodes - 1) * node_gap + 0.15) / W
@@ -2761,7 +2826,8 @@ def plot_cluster_self_supply_violins_combination(
     violin_width=1.0,
     top_margin=0.4,
     violin_height=2.2,
-    bottom_margin=0.2,
+    bottom_margin=0.75,
+    cf_carriers=("onwind", "solar", "solar-hsat"),
     save_path=None,
 ):
     """
@@ -2772,7 +2838,9 @@ def plot_cluster_self_supply_violins_combination(
     one figure: one violin per node side by side (node name on top, one dot
     per snapshot, black bar at the time-weighted mean) and the legend on the
     right. Clusters whose electrolysers consume <= 5 GWh/year (hybrid power
-    plants) keep an empty slot.
+    plants) keep an empty slot. Below every violin, the average yearly
+    capacity factor of the cluster generators '<node> 0 <carrier> renewable
+    cluster' of ``cf_carriers`` (time-weighted mean of p_max_pu).
 
     Meant to be panel b) of a paper figure, below
     plot_load_duration_curves_combination as panel a): with the same
@@ -2791,15 +2859,19 @@ def plot_cluster_self_supply_violins_combination(
         optionally 'title'.
     node_label : str
         Title on top of every violin, "{node}" is replaced by the node name.
+    cf_carriers : tuple of str
+        Carriers whose average yearly capacity factor is written below the
+        violins ("-" if the node has no such cluster generator).
     save_path : str or Path, optional
         If given, the figure is saved there.
 
     Returns
     -------
-    dict {(region title, node): (share Series [%], time-weighted mean [%])}
+    dict {(region title, node): (share Series [%], time-weighted mean [%],
+                                 dict {carrier: average yearly CF [%]})}
     """
     results = {}
-    columns_data = []  # per node, in plotting order: (node, share or None, mean)
+    columns_data = []  # per node, in plotting order: (node, share or None, mean, CFs)
 
     for i, case in enumerate(nodes):
         region = case.get("title", f"Region {i}")
@@ -2811,6 +2883,17 @@ def plot_cluster_self_supply_violins_combination(
         weights = n.snapshot_weightings.generators
 
         for node in case["nodes"]:
+            # average yearly capacity factor of the cluster generators:
+            # time-weighted mean of p_max_pu of '<node> 0 <carrier> renewable cluster'
+            cfs = {}
+            for carrier in cf_carriers:
+                gen = f"{node} 0 {carrier} renewable cluster"
+                if gen in n.generators.index:
+                    p_max_pu = n.get_switchable_as_dense("Generator", "p_max_pu", inds=[gen])[gen]
+                    cfs[carrier] = (p_max_pu * weights).sum() / weights.sum() * 100.0
+                else:
+                    cfs[carrier] = None
+
             # only meaningful if the cluster runs an electrolyser:
             # yearly electrolyser electricity consumption > 5 GWh
             electrolysers = n.links.index[
@@ -2825,7 +2908,7 @@ def plot_cluster_self_supply_violins_combination(
             if electrolyser_consumption <= 5:
                 print(f"{region}: the cluster in {node} is a hybrid power plant "
                       f"for {combination_label(combination)}, no violin plot")
-                columns_data.append((node, None, None))
+                columns_data.append((node, None, None, cfs))
                 continue
 
             # cluster electricity balance [GW], production positive
@@ -2873,15 +2956,15 @@ def plot_cluster_self_supply_violins_combination(
             valid = total > 1e-6
             share = (internal[valid] / total[valid] * 100.0).clip(0.0, 100.0)
             if share.empty:
-                columns_data.append((node, None, None))
+                columns_data.append((node, None, None, cfs))
                 continue
 
             # time-weighted mean over the snapshots with supply
             w = weights.loc[share.index]
             weighted_avg = (share * w).sum() / w.sum()
 
-            columns_data.append((node, share, weighted_avg))
-            results[(region, node)] = (share, weighted_avg)
+            columns_data.append((node, share, weighted_avg, cfs))
+            results[(region, node)] = (share, weighted_avg, cfs)
 
     if not columns_data:
         print(f"No violin to plot for {combination_label(combination)}")
@@ -2897,7 +2980,7 @@ def plot_cluster_self_supply_violins_combination(
     y0 = bottom_margin
 
     rng = np.random.default_rng(0)
-    for k, (node, share, avg) in enumerate(columns_data):
+    for k, (node, share, avg, cfs) in enumerate(columns_data):
         # violin centred in the column of its node
         x_center = left_margin + k * (node_width + node_gap) + node_width / 2
         ax = fig.add_axes([(x_center - violin_width / 2) / W, y0 / H,
@@ -2934,6 +3017,14 @@ def plot_cluster_self_supply_violins_combination(
         fig.text(x_center / W, (H - 0.08) / H, node_label.replace("{node}", node),
                  ha="center", va="top", fontsize=11, fontweight="bold")
 
+        # average yearly capacity factors below the violin, one line per carrier
+        for j, carrier in enumerate(cf_carriers):
+            cf = cfs[carrier]
+            value = f"{cf:.1f} %" if cf is not None else "-"
+            fig.text(x_center / W, (y0 - 0.12 - j * 0.17) / H,
+                     f"Average yearly CF {carrier}: {value}",
+                     ha="center", va="top", fontsize=8)
+
     # legend on the right
     legend_x = (left_margin + n_nodes * node_width + (n_nodes - 1) * node_gap + 0.15) / W
     fig.legend(
@@ -2949,7 +3040,8 @@ def plot_cluster_self_supply_violins_combination(
     return results
 
 
-
+PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
+PICTURES_DIR.mkdir(parents=True, exist_ok=True)
 #%%
 # Build the combined metrics DataFrame once: each network (both regions) is
 # loaded from disk exactly once, and every plot below (single-region and
@@ -3089,9 +3181,7 @@ VALUE_COLS = [
      ("Share of Curtailment in the Cluster[%]", YELLOWS),
 ]
 
-#%%
-PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
-PICTURES_DIR.mkdir(parents=True, exist_ok=True)
+
 
 #%%
 for axis, fixed, axis_range in [
@@ -3414,12 +3504,12 @@ nodes = [
 
 load_durations_combination = plot_load_duration_curves_combination(
     combination, nodes,
-    # save_path=PICTURES_DIR / "HyClusterLoadDurationCurves.pdf",
+    save_path=PICTURES_DIR / "HyClusterLoadDurationCurves.pdf",
 )
 
 self_supply_combination = plot_cluster_self_supply_violins_combination(
     combination, nodes,
-    # save_path=PICTURES_DIR / "HyClusterSelfSupplyViolins.pdf",
+    save_path=PICTURES_DIR / "HyClusterSelfSupplyViolins.pdf",
 )
 
 # %%

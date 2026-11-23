@@ -3270,6 +3270,9 @@ def plot_cluster_electricity_balance_map(
     plt.show()
     return bus_size
 
+
+PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
+PICTURES_DIR.mkdir(parents=True, exist_ok=True)
 #%%
 networks_folder=r"results/Iberic40_2035_industrial_clusters_all3hrerun/all/networks"
 config_plotting = yaml.safe_load(Path("config/plotting.default.yaml").read_text())
