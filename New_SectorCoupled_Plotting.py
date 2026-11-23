@@ -2667,7 +2667,7 @@ def plot_FT_merit_order(n, min_capacity=1):
     return prices
 
 
-def plot_cheapest_methanol_cost_breakdown(n, min_capacity_el=1):
+def plot_cheapest_methanol_cost_breakdown(n, min_capacity_el=1, save_path=None):
     """Stacked bars with the cost breakdown of the average methanol price of
     the cheapest methanol producer inside a renewable cluster and the
     cheapest one outside the clusters.
@@ -2801,12 +2801,14 @@ def plot_cheapest_methanol_cost_breakdown(n, min_capacity_el=1):
     ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=4,
               frameon=False, fontsize=9)
     fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, bbox_inches="tight")
     plt.show()
 
     return breakdowns
 
 
-def plot_cheapest_FT_cost_breakdown(n, min_capacity=1):
+def plot_cheapest_FT_cost_breakdown(n, min_capacity=1, save_path=None):
     """Stacked bars with the cost breakdown of the average Fischer-Tropsch
     oil price of the cheapest FT producer inside a renewable cluster and the
     cheapest one outside the clusters.
@@ -2940,6 +2942,8 @@ def plot_cheapest_FT_cost_breakdown(n, min_capacity=1):
     ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=4,
               frameon=False, fontsize=9)
     fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, bbox_inches="tight")
     plt.show()
 
     return breakdowns
@@ -3320,9 +3324,9 @@ methanol_merit_order = plot_methanol_merit_order(n)
 
 FT_merit_order = plot_FT_merit_order(n)
 
-methanol_cost_breakdown = plot_cheapest_methanol_cost_breakdown(n)
+methanol_cost_breakdown = plot_cheapest_methanol_cost_breakdown(n, save_path=PICTURES_DIR / "MethanolCostBreakdown_Iberian.pdf")
 
-FT_cost_breakdown = plot_cheapest_FT_cost_breakdown(n)
+FT_cost_breakdown = plot_cheapest_FT_cost_breakdown(n, save_path=PICTURES_DIR / "FTCostBreakdown_Iberian.pdf")
 
 #%%
 
@@ -3444,7 +3448,9 @@ self_supply_share, self_supply_avg = plot_cluster_self_supply_violin(n, "DK1 0")
 price_curves = plot_cluster_price_duration_curves(n, "DK1 0", max_electricity_price=500, n_base=n_base,
                                                   save_path=PICTURES_DIR / "PriceDurationCurves_DK1_0.pdf")
 
+methanol_cost_breakdown = plot_cheapest_methanol_cost_breakdown(n, save_path=PICTURES_DIR / "MethanolCostBreakdown_Nordics.pdf")
 
+FT_cost_breakdown = plot_cheapest_FT_cost_breakdown(n, save_path=PICTURES_DIR / "FTCostBreakdown_Nordics.pdf")
 
 #%%
 
