@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 from matplotlib.patches import Polygon
+import matplotlib.patches as mpatches
 from matplotlib.lines import Line2D
 import geopandas as gpd
 from pypsa.plot import add_legend_lines, add_legend_patches, add_legend_semicircles
@@ -61,8 +62,7 @@ label_to_colors = {
     'onwind renewable cluster': "#8ad0ff",
     'Fischer-Tropsch renewable cluster': "#c99799",
     'Sabatier renewable cluster': '#debf12',
-    'electricity renewable cluster both': "#BEBBFA",
-    'bidirectional grid connection': "#6e6e6e",
+    'electricity renewable cluster both': "#6e6e6e",
 
     'DAC': "#b93af0",
     'SMR CC': "#6b3a1f",
@@ -77,7 +77,8 @@ label_to_colors = {
     'DAC renewable cluster': "#ff8fab",
 
     'grid connection (sell) renewable cluster':'#a69594',
-    'grid connection (buy) renewable cluster':'#858ba8'
+    'grid connection (buy) renewable cluster':'#858ba8',
+    'grid connection (both) renewable cluster': "#6e6e6e",
 
 }
 
@@ -87,7 +88,7 @@ label_to_colors = {
 cluster_link_display_names = {
     'electricity renewable cluster': 'grid connection (sell) renewable cluster',
     'electricity renewable cluster back': 'grid connection (buy) renewable cluster',
-    'electricity renewable cluster both': 'bidirectional grid connection',
+    'electricity renewable cluster both': 'grid connection (both) renewable cluster',
     'urban central DAC renewable cluster': 'DAC renewable cluster',
     'urban decentral DAC renewable cluster': 'DAC renewable cluster',
 }
@@ -1853,13 +1854,13 @@ def calculate_price_of_methanol_cluster(n):
 
 
 def plot_load_duration_curve(n,tech_dictionary,nodes,
-                             title="Load Duration Curves for renewable technologies – {node}",
-                             small_fraction=0.1,
+                             title="Cluster {node}",
+                             small_capacity=70,
                              min_generator_capacity=10):
     # `title` may contain a "{node}" placeholder, which is replaced by the
     # node name of each plot (e.g. title="Renewable cluster at {node}").
-    # Technologies with a capacity below `small_fraction` x the largest
-    # capacity are drawn in a separate bottom panel (set 0 for one panel).
+    # Technologies with a capacity lower than or equal to `small_capacity`
+    # [MW] are drawn in a separate bottom panel (set None for one panel).
     # Generators below `min_generator_capacity` [MW] are not plotted.
 
     h_per_snapshot = n.snapshot_weightings.generators.iloc[0]
@@ -1936,16 +1937,20 @@ def plot_load_duration_curve(n,tech_dictionary,nodes,
 
         x_max = len(n.snapshots) * h_per_snapshot
 
-        # split by size: technologies whose capacity is below
-        # `small_fraction` x the largest capacity go to a second panel with
-        # its own MW axis, so small units (DAC, methanolisation, ...) are not
-        # flattened by the large ones
-        threshold = small_fraction * max(pnoms.values())
-        large = [c for c in load_durations.columns if pnoms[c] >= threshold]
-        small = [c for c in load_durations.columns if pnoms[c] < threshold]
+        # split by size: technologies whose capacity is lower than or equal
+        # to `small_capacity` [MW] go to a second panel with its own MW axis,
+        # so small units (DAC, methanolisation, ...) are not flattened by the
+        # large ones
+        if small_capacity is None:
+            large, small = list(load_durations.columns), []
+        else:
+            large = [c for c in load_durations.columns if pnoms[c] > small_capacity]
+            small = [c for c in load_durations.columns if pnoms[c] <= small_capacity]
         panels = [(cols, label) for cols, label in
-                  [(large, "Large capacities"),
-                   (small, f"Small capacities (< {threshold:,.0f} MW)")]
+                  [(large, f"Large capacities (> {small_capacity:,.0f} MW)"
+                    if small_capacity is not None else "Capacities"),
+                   (small, f"Small capacities (≤ {small_capacity:,.0f} MW)"
+                    if small_capacity is not None else "")]
                   if cols]
 
         fig, axes = plt.subplots(len(panels), 1, sharex=True,
@@ -2527,6 +2532,416 @@ def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=No
     return duration_curves
 
 
+def plot_methanol_merit_order(n, min_capacity_el=1):
+    """Merit order of the average methanol prices: one bar per production
+    site, sorted from cheapest to most expensive. Sites inside the renewable
+    cluster are labelled "<node> cluster".
+
+    Only sites whose methanolisation capacity exceeds ``min_capacity_el`` [MWel]
+    are shown. p_nom_opt is in MW of hydrogen input (bus0), so it is converted
+    to MWel with the electricity input on bus2: p_nom_opt * |efficiency2|
+    (same conversion as in plot_load_duration_curve).
+    """
+
+    _, _, _, methanol_avg = compute_ft_and_methanol_prices(n)
+    _, _, _, methanol_avg_rc, _ = compute_ft_and_methanol_prices_renewable_cluster(n)
+
+    prices = {}
+    for avg, suffix, label_suffix in [
+        (methanol_avg, "", ""),
+        (methanol_avg_rc, " renewable cluster", " cluster"),
+    ]:
+        for node, price in avg.dropna().items():
+            link = f"{node} methanolisation{suffix}"
+            if link not in n.links.index:
+                continue
+            capacity_el = abs(n.links.at[link, "p_nom_opt"] * n.links.at[link, "efficiency2"])
+            if capacity_el > min_capacity_el:
+                prices[node + label_suffix] = price
+
+    prices = pd.Series(prices, dtype=float).sort_values()
+
+    if prices.empty:
+        print(f"No methanolisation plant above {min_capacity_el} MWel in this network")
+        return prices
+
+    colors = ["navy" if label.endswith(" cluster") else "darkorange" for label in prices.index]
+
+    # cheapest on the left, most expensive on the right
+    fig, ax = plt.subplots(figsize=(max(8, 0.55 * len(prices)), 5.5))
+    x = np.arange(len(prices))
+    bars = ax.bar(x, prices.values, color=colors, width=0.45, linewidth=0, zorder=3)
+    ax.bar_label(bars, fmt="%.2f", padding=2, fontsize=7, rotation=90)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(prices.index, rotation=60, ha="right", rotation_mode="anchor", fontsize=9)
+    ax.set_xlim(-0.6, len(prices) - 0.4)
+    ax.set_ylim(min(0, prices.min() * 1.1), prices.max() * 1.18)
+    ax.set_xlabel("Production site (cheapest → most expensive)")
+    ax.set_ylabel("Average methanol price [€/MWh]")
+    ax.set_title("Merit order of methanol production prices",
+                 fontsize=13, fontweight="bold", pad=22)
+    ax.grid(axis="y", linestyle=":", alpha=0.6, zorder=0)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    ax.legend(
+        handles=[
+            mpatches.Patch(color="darkorange", label="Outside the cluster"),
+            mpatches.Patch(color="navy", label="Inside the cluster"),
+        ],
+        # centred above the axes, between the title and the bars
+        loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2,
+        frameon=False, fontsize=9,
+    )
+    fig.tight_layout()
+    plt.show()
+
+    return prices
+
+
+def plot_FT_merit_order(n, min_capacity=1):
+    """Merit order of the average Fischer-Tropsch oil prices: one bar per
+    production site, sorted from cheapest to most expensive. Sites inside the
+    renewable cluster are labelled "<node> cluster".
+
+    Fischer-Tropsch has no electricity input (bus0 = H2, bus1 = oil,
+    bus2 = co2 stored), so the capacity filter is on p_nom_opt in MW of
+    hydrogen input: only sites above ``min_capacity`` [MW_H2] are shown.
+    """
+
+    FT_avg = compute_ft_and_methanol_prices(n)[2]
+    FT_avg_rc = compute_ft_and_methanol_prices_renewable_cluster(n)[2]
+
+    prices = {}
+    for avg, suffix, label_suffix in [
+        (FT_avg, "", ""),
+        (FT_avg_rc, " renewable cluster", " cluster"),
+    ]:
+        for node, price in avg.dropna().items():
+            link = f"{node} Fischer-Tropsch{suffix}"
+            if link not in n.links.index:
+                continue
+            if n.links.at[link, "p_nom_opt"] > min_capacity:
+                prices[node + label_suffix] = price
+
+    prices = pd.Series(prices, dtype=float).sort_values()
+
+    if prices.empty:
+        print(f"No Fischer-Tropsch plant above {min_capacity} MW_H2 in this network")
+        return prices
+
+    colors = ["navy" if label.endswith(" cluster") else "darkorange" for label in prices.index]
+
+    # cheapest on the left, most expensive on the right
+    fig, ax = plt.subplots(figsize=(max(8, 0.55 * len(prices)), 5.5))
+    x = np.arange(len(prices))
+    bars = ax.bar(x, prices.values, color=colors, width=0.45, linewidth=0, zorder=3)
+    ax.bar_label(bars, fmt="%.2f", padding=2, fontsize=7, rotation=90)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(prices.index, rotation=60, ha="right", rotation_mode="anchor", fontsize=9)
+    ax.set_xlim(-0.6, len(prices) - 0.4)
+    ax.set_ylim(min(0, prices.min() * 1.1), prices.max() * 1.18)
+    ax.set_xlabel("Production site (cheapest → most expensive)")
+    ax.set_ylabel("Average Fischer-Tropsch oil price [€/MWh]")
+    ax.set_title("Merit order of Fischer-Tropsch oil production prices",
+                 fontsize=13, fontweight="bold", pad=22)
+    ax.grid(axis="y", linestyle=":", alpha=0.6, zorder=0)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    ax.legend(
+        handles=[
+            mpatches.Patch(color="darkorange", label="Outside the cluster"),
+            mpatches.Patch(color="navy", label="Inside the cluster"),
+        ],
+        # centred above the axes, between the title and the bars
+        loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=2,
+        frameon=False, fontsize=9,
+    )
+    fig.tight_layout()
+    plt.show()
+
+    return prices
+
+
+def plot_cheapest_methanol_cost_breakdown(n, min_capacity_el=1):
+    """Stacked bars with the cost breakdown of the average methanol price of
+    the cheapest methanol producer inside a renewable cluster and the
+    cheapest one outside the clusters.
+
+    Components follow the price formulas in compute_ft_and_methanol_prices
+    (outside) and compute_ft_and_methanol_prices_renewable_cluster (cluster):
+    each term is summed over snapshots and divided by total methanol
+    production, so the components add up to the average price. The CO2
+    component includes the CO2 allowance term, heat is a credit (negative).
+    Only plants above ``min_capacity_el`` [MWel] (p_nom_opt * |efficiency2|)
+    are considered.
+    """
+
+    methanol_avg = compute_ft_and_methanol_prices(n)[3]
+    methanol_avg_rc = compute_ft_and_methanol_prices_renewable_cluster(n)[3]
+
+    weights = n.snapshot_weightings.generators
+    co2_intensity_methanol = n.links.loc[
+        n.links.index.str.contains("EU shipping methanol"), 'efficiency2'
+    ].iloc[0]
+    co2_price = n.global_constraints.loc[
+        n.global_constraints.carrier_attribute.str.contains("co2_emissions"), 'mu'
+    ].iloc[0]
+
+    breakdowns = {}
+    for avg, suffix, label_suffix, group in [
+        (methanol_avg_rc, " renewable cluster", " cluster", "the renewable clusters"),
+        (methanol_avg, "", "", "the nodes outside the clusters"),
+    ]:
+        # cheapest producer above the capacity threshold
+        candidates = {}
+        for node, price in avg.dropna().items():
+            link = f"{node} methanolisation{suffix}"
+            if link in n.links.index and abs(
+                n.links.at[link, "p_nom_opt"] * n.links.at[link, "efficiency2"]
+            ) > min_capacity_el:
+                candidates[node] = price
+        if not candidates:
+            print(f"None of {group} produces methanol in this network")
+            continue
+        node = pd.Series(candidates).idxmin()
+        link = f"{node} methanolisation{suffix}"
+
+        O_and_M_cost = n.links.at[link, 'marginal_cost']
+        capital_cost = n.links.at[link, 'capital_cost'] * n.links.at[link, 'p_nom_opt']
+
+        price_of_H2 = n.buses_t.marginal_price.loc[:, f"{node} H2{suffix}"]
+        consumption_of_H2 = n.links_t.p0.loc[:, link]
+        consumption_of_H2_total = consumption_of_H2.multiply(weights, axis=0).sum()
+        capital_cost_allocated = capital_cost * consumption_of_H2 / consumption_of_H2_total
+
+        price_of_CO2 = n.buses_t.marginal_price.loc[:, f"{node} co2 stored{suffix}"]
+        consumption_of_CO2 = n.links_t.p3.loc[:, link]
+        price_of_electricity = n.buses_t.marginal_price.loc[:, f"{node}{suffix}"]
+        consumption_of_electricity = n.links_t.p2.loc[:, link]
+
+        heat_term = 0.0
+        if f"{node} urban central heat{suffix}" in n.buses_t.marginal_price.columns:
+            price_of_heat = n.buses_t.marginal_price.loc[:, f"{node} urban central heat{suffix}"]
+            production_of_heat = n.links_t.p4.loc[:, link].abs()
+            heat_term = (price_of_heat * production_of_heat).sum()
+
+        production_total = n.links_t.p1.loc[:, link].abs().sum()
+
+        group_label = "Cheapest cluster" if suffix else "Cheapest outside the clusters"
+        breakdowns[f"{group_label}\n{node}{label_suffix}"] = pd.Series({
+            "Hydrogen": (price_of_H2 * consumption_of_H2).sum() / production_total,
+            "Electricity": (price_of_electricity * consumption_of_electricity).sum() / production_total,
+            "CO2": (price_of_CO2 * consumption_of_CO2).sum() / production_total
+                   - co2_intensity_methanol * co2_price,
+            "Capital": capital_cost_allocated.sum() / production_total,
+            "O&M": (O_and_M_cost * consumption_of_H2).sum() / production_total,
+            "Heat": -heat_term / production_total,
+        })
+
+    if not breakdowns:
+        return None
+
+    breakdowns = pd.DataFrame(breakdowns)  # rows: components, columns: producers
+
+    component_colors = {
+        "Hydrogen": "#4C9BE8",
+        "Electricity": "#F2C14E",
+        "CO2": "#7F7F7F",
+        "Capital": "#8E6BBF",
+        "O&M": "#5DB58A",
+        "Heat": "#E07A5F",
+    }
+
+    fig, ax = plt.subplots(figsize=(6 + 1.5 * breakdowns.shape[1], 6))
+    x = np.arange(breakdowns.shape[1])
+    width = 0.4
+
+    # stack positive components upwards and negative ones (credits) downwards
+    pos_bottom = np.zeros(len(x))
+    neg_bottom = np.zeros(len(x))
+    for comp in breakdowns.index:
+        values = breakdowns.loc[comp].values.astype(float)
+        if np.allclose(values, 0):
+            continue
+        bottom = np.where(values >= 0, pos_bottom, neg_bottom)
+        ax.bar(x, values, width=width, bottom=bottom,
+               color=component_colors.get(comp, "#cccccc"),
+               linewidth=0.5, edgecolor="white", label=comp, zorder=3)
+        # value inside the segment if it is large enough to read
+        for xi, v, b in zip(x, values, bottom):
+            if abs(v) > 0.04 * breakdowns.clip(lower=0).sum().max():
+                ax.text(xi, b + v / 2, f"{v:.2f}", ha="center", va="center",
+                        fontsize=8, color="black", zorder=4)
+        pos_bottom += np.clip(values, 0, None)
+        neg_bottom += np.clip(values, None, 0)
+
+    # total = average price
+    totals = breakdowns.sum()
+    ax.scatter(x, totals.values, marker="D", color="black", s=30, zorder=5,
+               label="Average price")
+    for xi, t in zip(x, totals.values):
+        ax.text(xi + width / 2 + 0.05, t, f"{t:.2f} €/MWh",
+                va="center", fontsize=9, fontweight="bold")
+
+    ax.axhline(0, color="black", linewidth=0.8, zorder=4)
+    ax.set_xticks(x)
+    ax.set_xticklabels(breakdowns.columns)
+    ax.set_xlim(-0.6, len(x) - 0.4 + 0.3)
+    ax.set_ylabel("Cost contribution [€/MWh of methanol]")
+    ax.set_title("Cost breakdown of the cheapest methanol producers",
+                 fontsize=13, fontweight="bold", pad=40)
+    ax.grid(axis="y", linestyle=":", alpha=0.6, zorder=0)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=4,
+              frameon=False, fontsize=9)
+    fig.tight_layout()
+    plt.show()
+
+    return breakdowns
+
+
+def plot_cheapest_FT_cost_breakdown(n, min_capacity=1):
+    """Stacked bars with the cost breakdown of the average Fischer-Tropsch
+    oil price of the cheapest FT producer inside a renewable cluster and the
+    cheapest one outside the clusters.
+
+    Components follow the price formulas in compute_ft_and_methanol_prices
+    (outside) and compute_ft_and_methanol_prices_renewable_cluster (cluster):
+    each term is summed over snapshots and divided by total FT oil
+    production, so the components add up to the average price. The CO2
+    component includes the CO2 allowance term, heat is a credit (negative).
+    FT has no electricity input, so only plants above ``min_capacity``
+    [MW_H2] are considered.
+    """
+
+    FT_avg = compute_ft_and_methanol_prices(n)[2]
+    FT_avg_rc = compute_ft_and_methanol_prices_renewable_cluster(n)[2]
+
+    weights = n.snapshot_weightings.generators
+    co2_price = n.global_constraints.loc[
+        n.global_constraints.carrier_attribute.str.contains("co2_emissions"), 'mu'
+    ].iloc[0]
+
+    is_FT = n.links.index.str.contains("Fischer-Tropsch")
+    is_rc = n.links.index.str.contains("renewable cluster")
+
+    breakdowns = {}
+    for avg, suffix, label_suffix, group, FT_mask in [
+        (FT_avg_rc, " renewable cluster", " cluster", "the renewable clusters", is_FT & is_rc),
+        # same selection as in compute_ft_and_methanol_prices
+        (FT_avg, "", "", "the nodes outside the clusters", is_FT),
+    ]:
+        # cheapest producer above the capacity threshold
+        candidates = {}
+        for node, price in avg.dropna().items():
+            link = f"{node} Fischer-Tropsch{suffix}"
+            if link in n.links.index and n.links.at[link, "p_nom_opt"] > min_capacity:
+                candidates[node] = price
+        if not candidates:
+            print(f"None of {group} produces Fischer-Tropsch oil in this network")
+            continue
+        node = pd.Series(candidates).idxmin()
+        link = f"{node} Fischer-Tropsch{suffix}"
+
+        co2_intensity_FT = (
+            n.links.loc[FT_mask, 'efficiency2'].iloc[0]
+            / n.links.loc[FT_mask, 'efficiency'].iloc[0]
+        )
+
+        O_and_M_cost = n.links.at[link, 'marginal_cost']
+        capital_cost = n.links.at[link, 'capital_cost'] * n.links.at[link, 'p_nom_opt']
+
+        price_of_H2 = n.buses_t.marginal_price.loc[:, f"{node} H2{suffix}"]
+        consumption_of_H2 = n.links_t.p0.loc[:, link]
+        consumption_of_H2_total = consumption_of_H2.multiply(weights, axis=0).sum()
+        capital_cost_allocated = capital_cost * consumption_of_H2 / consumption_of_H2_total
+
+        price_of_CO2 = n.buses_t.marginal_price.loc[:, f"{node} co2 stored{suffix}"]
+        consumption_of_CO2 = n.links_t.p2.loc[:, link]
+
+        heat_term = 0.0
+        if f"{node} urban central heat{suffix}" in n.buses_t.marginal_price.columns:
+            price_of_heat = n.buses_t.marginal_price.loc[:, f"{node} urban central heat{suffix}"]
+            production_of_heat = n.links_t.p3.loc[:, link].abs()
+            heat_term = (price_of_heat * production_of_heat).sum()
+
+        production_total = n.links_t.p1.loc[:, link].abs().sum()
+
+        group_label = "Cheapest cluster" if suffix else "Cheapest outside the clusters"
+        breakdowns[f"{group_label}\n{node}{label_suffix}"] = pd.Series({
+            "Hydrogen": (price_of_H2 * consumption_of_H2).sum() / production_total,
+            "CO2": (price_of_CO2 * consumption_of_CO2).sum() / production_total
+                   + co2_intensity_FT * co2_price,
+            "Capital": capital_cost_allocated.sum() / production_total,
+            "O&M": (O_and_M_cost * consumption_of_H2).sum() / production_total,
+            "Heat": -heat_term / production_total,
+        })
+
+    if not breakdowns:
+        return None
+
+    breakdowns = pd.DataFrame(breakdowns)  # rows: components, columns: producers
+
+    component_colors = {
+        "Hydrogen": "#4C9BE8",
+        "CO2": "#7F7F7F",
+        "Capital": "#8E6BBF",
+        "O&M": "#5DB58A",
+        "Heat": "#E07A5F",
+    }
+
+    fig, ax = plt.subplots(figsize=(6 + 1.5 * breakdowns.shape[1], 6))
+    x = np.arange(breakdowns.shape[1])
+    width = 0.4
+
+    # stack positive components upwards and negative ones (credits) downwards
+    pos_bottom = np.zeros(len(x))
+    neg_bottom = np.zeros(len(x))
+    for comp in breakdowns.index:
+        values = breakdowns.loc[comp].values.astype(float)
+        if np.allclose(values, 0):
+            continue
+        bottom = np.where(values >= 0, pos_bottom, neg_bottom)
+        ax.bar(x, values, width=width, bottom=bottom,
+               color=component_colors.get(comp, "#cccccc"),
+               linewidth=0.5, edgecolor="white", label=comp, zorder=3)
+        # value inside the segment if it is large enough to read
+        for xi, v, b in zip(x, values, bottom):
+            if abs(v) > 0.04 * breakdowns.clip(lower=0).sum().max():
+                ax.text(xi, b + v / 2, f"{v:.2f}", ha="center", va="center",
+                        fontsize=8, color="black", zorder=4)
+        pos_bottom += np.clip(values, 0, None)
+        neg_bottom += np.clip(values, None, 0)
+
+    # total = average price
+    totals = breakdowns.sum()
+    ax.scatter(x, totals.values, marker="D", color="black", s=30, zorder=5,
+               label="Average price")
+    for xi, t in zip(x, totals.values):
+        ax.text(xi + width / 2 + 0.05, t, f"{t:.2f} €/MWh",
+                va="center", fontsize=9, fontweight="bold")
+
+    ax.axhline(0, color="black", linewidth=0.8, zorder=4)
+    ax.set_xticks(x)
+    ax.set_xticklabels(breakdowns.columns)
+    ax.set_xlim(-0.6, len(x) - 0.4 + 0.3)
+    ax.set_ylabel("Cost contribution [€/MWh of FT oil]")
+    ax.set_title("Cost breakdown of the cheapest Fischer-Tropsch producers",
+                 fontsize=13, fontweight="bold", pad=40)
+    ax.grid(axis="y", linestyle=":", alpha=0.6, zorder=0)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    ax.legend(loc="lower center", bbox_to_anchor=(0.5, 1.0), ncol=4,
+              frameon=False, fontsize=9)
+    fig.tight_layout()
+    plt.show()
+
+    return breakdowns
+
+
 def plot_cluster_electricity_balance_map(
     n,
     regions,
@@ -2894,6 +3309,14 @@ price_curves = plot_cluster_price_duration_curves(n, "ES0 11", max_electricity_p
 
 price_curves = plot_cluster_price_duration_curves(n, "ES0 4", max_electricity_price=250, n_base=n_base)
 
+methanol_merit_order = plot_methanol_merit_order(n)
+
+FT_merit_order = plot_FT_merit_order(n)
+
+methanol_cost_breakdown = plot_cheapest_methanol_cost_breakdown(n)
+
+FT_cost_breakdown = plot_cheapest_FT_cost_breakdown(n)
+
 #%%
 
 n = pypsa.Network(str(df.loc[(df.CR == 0.1) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.3), "path"].iloc[0]))
@@ -2991,7 +3414,7 @@ df = pd.DataFrame(records)
 
 
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.2) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
 
 n_base=pypsa.Network(networks_folder+r"/base_s_100_lv1.0_3h_2035.nc")
 
@@ -2999,11 +3422,27 @@ cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
+methanol_merit_order = plot_methanol_merit_order(n)
+
+FT_merit_order = plot_FT_merit_order(n)
+
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='1-1-2013', end_date='12-31-2013', n_base=n_base)
+
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK1 0"])
+
+
+self_supply_share, self_supply_avg = plot_cluster_self_supply_violin(n, "DK1 0")
+
+
+price_curves = plot_cluster_price_duration_curves(n, "DK1 0", max_electricity_price=500, n_base=n_base)
+
+
+
+#%%
+
 
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DE0 7"],start_date='1-1-2013', end_date='12-31-2013', n_base=n_base)
 
-#%%
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='1-15-2013', end_date='01-30-2013', n_base=n_base)
 
 el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='7-15-2013', end_date='7-30-2013', n_base=n_base)
@@ -3041,32 +3480,6 @@ cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "DK1 0")
 
 load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK1 0"])
 
-#%%
-
-n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
-
-# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 1"],start_date='01-07-2013', end_date='01-14-2013')
-
-# el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK0 1"],start_date='07-07-2013', end_date='07-14-2013')
-
-
-
- #%%
-FT_oil_prices_rc, methanol_prices_rc, FT_oil_prices_average_rc, methanol_prices_average_rc,methanol_cost_shares_rc = compute_ft_and_methanol_prices_renewable_cluster(n)
-
-cluster_components = (
-    [("link", idx) for idx in n.links.index if ("cluster" in idx  and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
-    + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
-)
-load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK1 0"])
-pnoms = plot_cluster_capacities(n, cluster_components, ["DK1 0"])
-
-
-cluster_curtailment_shares = plot_cluster_monthly_curtailment_share(n, "DK1 0")
-
-el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='01-1-2013', end_date='01-7-2013')
-
-el_balance_cluster = plot_electricity_balance_by_cluster(n, ["DK1 0"],start_date='07-01-2013', end_date='07-07-2013')
 
 #%%
 

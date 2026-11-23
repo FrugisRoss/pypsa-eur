@@ -16,7 +16,7 @@ remote:
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#run
 run:
-  prefix: "Iberic40_2035_industrial_clusters_all3hrerun"
+  prefix: "Iberic40_2035_industrial_clusters_all3h_newlinkcap"
   name: "all"
   scenarios:
     enable: false
@@ -448,7 +448,7 @@ transmission_projects:
   - confirmed
     #- planned_not_yet_permitted
     #- under_consideration
-  new_link_capacity: zero #keep or zero
+  new_link_capacity: keep #keep or zero
 
 # docs in https://pypsa-eur.readthedocs.io/en/latest/configuration.html#transformers
 transformers:

@@ -64,7 +64,7 @@ label_to_colors = {
     'onwind renewable cluster': "#8ad0ff",
     'Fischer-Tropsch renewable cluster': "#c99799",
     'Sabatier renewable cluster': '#debf12',
-    'electricity renewable cluster both': "#BEBBFA",
+    'electricity renewable cluster both': "#6e6e6e",
 
     'DAC': "#b93af0",
     'SMR CC': "#6b3a1f",
@@ -79,7 +79,8 @@ label_to_colors = {
     'DAC renewable cluster': "#ff8fab",
 
     'grid connection (sell) renewable cluster':'#a69594',
-    'grid connection (buy) renewable cluster':'#858ba8'
+    'grid connection (buy) renewable cluster':'#858ba8',
+    'grid connection (both) renewable cluster': "#6e6e6e",
 
 }
 
@@ -2515,6 +2516,437 @@ def plot_cluster_electricity_balance_maps_two_regions(
     ]
 
 
+def plot_load_duration_curves_combination(
+    combination,
+    nodes,
+    node_label="{node}",
+    small_capacity=70,
+    min_generator_capacity=10,
+    left_margin=0.75,
+    node_width=2.6,
+    node_gap=0.55,
+    legend_width=2.8,
+    top_margin=0.4,
+    large_height=1.5,
+    small_height=0.9,
+    panel_gap=0.3,
+    bottom_margin=0.5,
+    save_path=None,
+):
+    """
+    Load duration curves of the renewable clusters of selected nodes of
+    several regions, for one combination of wildcards (same curves as
+    plot_load_duration_curve of New_SectorCoupled_Plotting.py), in one
+    figure: one column per node (node name on top), the capacities
+    > ``small_capacity`` [MW] in the top row and the ones <= ``small_capacity``
+    in the (lower) bottom row, the technology legend on the right of the top
+    row and the nominal-capacity legend on the right of the bottom row.
+
+    Meant to be panel a) of a paper figure, above
+    plot_cluster_self_supply_violins_combination as panel b): with the same
+    ``nodes`` and the same horizontal layout parameters (left_margin,
+    node_width, node_gap, legend_width) the two figures have the same width
+    and their node columns are aligned. All the layout parameters are in
+    inches; the figure is saved without cropping so the alignment is kept.
+
+    Parameters
+    ----------
+    combination : tuple
+        (CR, BUYcap, SELLcap, BOTHcap) of the network to plot.
+    nodes : list of dict
+        One dict per region with keys 'df' (metrics DataFrame with the
+        network paths, e.g. df_iberian or df_nordic), 'nodes' (list of node
+        names, e.g. ["ES0 11", "ES0 4"]) and optionally 'title' (region name).
+    node_label : str
+        Title on top of every node column, "{node}" is replaced by the node
+        name.
+    small_capacity : float or None
+        Technologies with a capacity <= ``small_capacity`` [MW] are drawn in
+        the bottom row (None: top row only).
+    min_generator_capacity : float
+        Generators below this capacity [MW] are not plotted.
+    save_path : str or Path, optional
+        If given, the figure is saved there.
+
+    Returns
+    -------
+    dict {(region title, node): (load_durations DataFrame, pnoms dict)}
+    """
+    results = {}
+    columns_data = []  # per node, in plotting order: (node, load_durations or None, pnoms)
+    x_max = 0
+
+    for i, case in enumerate(nodes):
+        region = case.get("title", f"Region {i}")
+
+        # network of this region for the combination
+        rows = filter_networks(case["df"], [combination])
+        if rows.empty:
+            continue
+        n = pypsa.Network(str(rows.path.iloc[0]))
+
+        h_per_snapshot = n.snapshot_weightings.generators.iloc[0]
+        x_max = max(x_max, len(n.snapshots) * h_per_snapshot)
+
+        # renewable cluster components (as cluster_components in
+        # New_SectorCoupled_Plotting.py)
+        components = (
+            [("link", idx) for idx in n.links.index
+             if "cluster" in idx and "discharger" not in idx
+             and "methanol renewable cluster" not in idx
+             and n.links.at[idx, "p_nom_opt"] > 0.1]
+            + [("generator", idx) for idx in n.generators.index
+               if "cluster" in idx and n.generators.at[idx, "p_nom_opt"] > 0.1]
+        )
+
+        for node in case["nodes"]:
+            curves, pnoms = {}, {}
+
+            for techtype, techname in components:
+                if (node + " ") not in techname:
+                    continue
+
+                if techtype == "generator":
+                    pnom = n.generators.at[techname, "p_nom_opt"]
+                    if pnom < min_generator_capacity:
+                        continue  # skip small generators entirely
+                    timeserie = n.generators_t["p"][techname]
+                elif "methanolisation" in techname:
+                    timeserie = n.links_t["p2"][techname].abs()
+                    pnom = abs(n.links.at[techname, "p_nom_opt"] * n.links.at[techname, "efficiency2"])
+                else:
+                    timeserie = n.links_t["p0"][techname].abs()
+                    pnom = n.links.at[techname, "p_nom_opt"]
+
+                label = techname[len(node):].lstrip()
+                if techtype == "generator":
+                    label = label[2:]  # drop the resource class ("0 solar ..." -> "solar ...")
+                label = cluster_link_display_names.get(label, label)
+
+                curve = timeserie.sort_values(ascending=False).reset_index(drop=True)
+                if not curve.le(0.0001).all():
+                    curves[label] = curve
+                    pnoms[label] = pnom
+
+            load_durations = pd.DataFrame(curves)
+            if load_durations.empty:
+                # keep an empty column so the nodes stay aligned with the violins
+                print(f"{region}: no renewable cluster component in operation at {node} "
+                      f"for {combination_label(combination)}")
+                columns_data.append((node, None, {}))
+                continue
+            load_durations.index = load_durations.index * h_per_snapshot  # hours
+            columns_data.append((node, load_durations, pnoms))
+            results[(region, node)] = (load_durations, pnoms)
+
+    if not columns_data:
+        print(f"No load duration curve to plot for {combination_label(combination)}")
+        return results
+
+    # --------------------------------------------------
+    # Layout in inches: one column per node, top row large capacities,
+    # bottom row small capacities, legends on the right
+    # --------------------------------------------------
+    n_nodes = len(columns_data)
+    two_rows = small_capacity is not None
+    W = left_margin + n_nodes * node_width + (n_nodes - 1) * node_gap + legend_width
+    H = top_margin + large_height + (panel_gap + small_height if two_rows else 0) + bottom_margin
+    fig = plt.figure(figsize=(W, H))
+
+    # (row label, bottom of the row, height of the row) in inches
+    large_bottom = H - top_margin - large_height
+    row_specs = [(f"Capacities > {small_capacity:,.0f} MW" if two_rows else None,
+                  large_bottom, large_height)]
+    if two_rows:
+        row_specs.append((f"Capacities ≤ {small_capacity:,.0f} MW",
+                          large_bottom - panel_gap - small_height, small_height))
+
+    # same y axis for all the nodes in a row: up to the largest nominal
+    # capacity of that row over all the nodes (x 1.1 for readability)
+    row_max = [0.0 for _ in row_specs]
+    for _, load_durations, pnoms in columns_data:
+        for tech, pnom in pnoms.items():
+            r = 1 if two_rows and pnom <= small_capacity else 0
+            row_max[r] = max(row_max[r], pnom)
+
+    tech_handles = {}  # legend entries, in order of appearance
+
+    for k, (node, load_durations, pnoms) in enumerate(columns_data):
+        x0 = left_margin + k * (node_width + node_gap)
+
+        if load_durations is None:
+            row_cols = [[] for _ in row_specs]
+        elif not two_rows:
+            row_cols = [list(load_durations.columns)]
+        else:
+            row_cols = [
+                [c for c in load_durations.columns if pnoms[c] > small_capacity],
+                [c for c in load_durations.columns if pnoms[c] <= small_capacity],
+            ]
+
+        for r, ((row_label, y0, height), cols) in enumerate(zip(row_specs, row_cols)):
+            ax = fig.add_axes([x0 / W, y0 / H, node_width / W, height / H])
+
+            for tech in cols:
+                color = label_to_colors.get(tech, "#cccccc")
+                # load duration curve
+                ax.plot(load_durations.index, load_durations[tech],
+                        color=color, linewidth=1.8, zorder=3, solid_capstyle="round")
+                # nominal installed capacity, same colour, dashed
+                ax.hlines(y=pnoms[tech], xmin=0, xmax=x_max,
+                          colors=color, linestyles=(0, (5, 3)),
+                          linewidth=1.1, alpha=0.8, zorder=2)
+                tech_handles.setdefault(tech, Line2D([0], [0], color=color, linewidth=2))
+
+            ax.set_xlim(0, x_max)
+            if cols:
+                ax.set_ylim(0, row_max[r] * 1.1)
+            else:
+                ax.set_yticks([])
+                ax.text(0.5, 0.5, "None", transform=ax.transAxes,
+                        ha="center", va="center", fontsize=9, color="#777777")
+            ax.tick_params(labelsize=8)
+            ax.grid(False)
+
+            # hour axis on the bottom row only
+            if r == len(row_specs) - 1:
+                ax.set_xlabel("Hours", fontsize=9)
+            else:
+                ax.tick_params(axis="x", labelbottom=False)
+
+            # y label and grey row label on the first column only
+            if k == 0:
+                ax.set_ylabel("Power [MW]", fontsize=9)
+                # same distance from the axis in both rows, whatever the tick labels
+                ax.yaxis.set_label_coords(-0.5 / node_width, 0.5)
+                if row_label:
+                    ax.set_title(row_label, loc="left", fontsize=8, color="#777777", pad=3)
+
+        # node name on top of its column
+        fig.text((x0 + node_width / 2) / W, (H - 0.08) / H, node_label.replace("{node}", node),
+                 ha="center", va="top", fontsize=11, fontweight="bold")
+
+    # legends on the right: technologies next to the top row, nominal
+    # installed capacity next to the bottom row
+    legend_x = (left_margin + n_nodes * node_width + (n_nodes - 1) * node_gap + 0.15) / W
+    fig.legend(
+        list(tech_handles.values()),
+        [tech.replace(" renewable cluster", "") for tech in tech_handles],
+        loc="upper left", bbox_to_anchor=(legend_x, (large_bottom + large_height) / H),
+        frameon=False, fontsize=9, handlelength=2.5, borderaxespad=0,
+    )
+    _, last_bottom, _ = row_specs[-1]
+    fig.legend(
+        [Line2D([0], [0], color="#555555", linestyle=(0, (5, 3)), linewidth=1.2)],
+        ["Nominal installed capacity"],
+        loc="lower left", bbox_to_anchor=(legend_x, last_bottom / H),
+        frameon=False, fontsize=9, handlelength=2.5, borderaxespad=0,
+    )
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300)  # no cropping: keeps the alignment with the violins
+    plt.show()
+
+    return results
+
+
+def plot_cluster_self_supply_violins_combination(
+    combination,
+    nodes,
+    node_label="{node}",
+    left_margin=0.75,
+    node_width=2.6,
+    node_gap=0.55,
+    legend_width=2.8,
+    violin_width=1.0,
+    top_margin=0.4,
+    violin_height=2.2,
+    bottom_margin=0.2,
+    save_path=None,
+):
+    """
+    Violin plots of the hourly share of the electricity supply of the
+    renewable clusters that comes from inside the cluster (as
+    plot_cluster_self_supply_violin of New_SectorCoupled_Plotting.py), for
+    selected nodes of several regions and one combination of wildcards, in
+    one figure: one violin per node side by side (node name on top, one dot
+    per snapshot, black bar at the time-weighted mean) and the legend on the
+    right. Clusters whose electrolysers consume <= 5 GWh/year (hybrid power
+    plants) keep an empty slot.
+
+    Meant to be panel b) of a paper figure, below
+    plot_load_duration_curves_combination as panel a): with the same
+    ``nodes`` and the same horizontal layout parameters (left_margin,
+    node_width, node_gap, legend_width) the two figures have the same width
+    and every violin (``violin_width`` wide) is centred under the load
+    duration curves of its node. All the layout parameters are in inches;
+    the figure is saved without cropping so the alignment is kept.
+
+    Parameters
+    ----------
+    combination : tuple
+        (CR, BUYcap, SELLcap, BOTHcap) of the network to plot.
+    nodes : list of dict
+        As in plot_load_duration_curves_combination: keys 'df', 'nodes' and
+        optionally 'title'.
+    node_label : str
+        Title on top of every violin, "{node}" is replaced by the node name.
+    save_path : str or Path, optional
+        If given, the figure is saved there.
+
+    Returns
+    -------
+    dict {(region title, node): (share Series [%], time-weighted mean [%])}
+    """
+    results = {}
+    columns_data = []  # per node, in plotting order: (node, share or None, mean)
+
+    for i, case in enumerate(nodes):
+        region = case.get("title", f"Region {i}")
+
+        rows = filter_networks(case["df"], [combination])
+        if rows.empty:
+            continue
+        n = pypsa.Network(str(rows.path.iloc[0]))
+        weights = n.snapshot_weightings.generators
+
+        for node in case["nodes"]:
+            # only meaningful if the cluster runs an electrolyser:
+            # yearly electrolyser electricity consumption > 5 GWh
+            electrolysers = n.links.index[
+                n.links.index.str.contains("renewable cluster")
+                & n.links.index.str.contains(node + " ")
+                & n.links.index.str.contains("Electrolysis")
+            ]
+            electrolyser_consumption = (
+                n.links_t["p0"][electrolysers].clip(lower=0)
+                .mul(weights, axis=0).sum().sum() / 10**3
+            )  # GWh
+            if electrolyser_consumption <= 5:
+                print(f"{region}: the cluster in {node} is a hybrid power plant "
+                      f"for {combination_label(combination)}, no violin plot")
+                columns_data.append((node, None, None))
+                continue
+
+            # cluster electricity balance [GW], production positive
+            balance = {}
+            grid_buy = pd.Series(0.0, index=n.snapshots)
+
+            gens = n.generators.index[
+                n.generators.index.str.contains("renewable cluster")
+                & n.generators.index.str.contains(node + " ")
+            ]
+            for gen in gens:
+                balance[gen] = n.generators_t["p"][gen] / 10**3
+
+            links = n.links.index[
+                n.links.index.str.contains("renewable cluster")
+                & n.links.index.str.contains(node + " ")
+            ]
+            for link in links:
+                if "methanolisation" in link:
+                    ts = n.links_t["p2"][link] / -10**3
+                elif "Fischer-Tropsch" in link:
+                    continue  # no electricity bus
+                elif "battery discharger" in link:
+                    ts = n.links_t["p1"][link] / -10**3
+                elif ("Electrolysis" in link or "DAC" in link or "battery charger" in link
+                      or link == f"{node} electricity renewable cluster"):
+                    ts = n.links_t["p0"][link] / -10**3
+                elif link == f"{node} electricity renewable cluster back":
+                    ts = n.links_t["p0"][link] / 10**3
+                elif link == f"{node} electricity renewable cluster both":
+                    # positive p0 = grid connection (buy), negative = (sell)
+                    ts = n.links_t["p0"][link] / 10**3
+                    grid_buy = grid_buy + ts.clip(lower=0).fillna(0)
+                    balance[link + " (sell)"] = ts.clip(upper=0)
+                    continue
+                else:
+                    continue
+                balance[link] = ts
+
+            balance = pd.DataFrame(balance, index=n.snapshots).fillna(0)
+            internal = balance.clip(lower=0).sum(axis=1)
+            total = internal + grid_buy
+
+            # snapshots with no supply have an undefined share
+            valid = total > 1e-6
+            share = (internal[valid] / total[valid] * 100.0).clip(0.0, 100.0)
+            if share.empty:
+                columns_data.append((node, None, None))
+                continue
+
+            # time-weighted mean over the snapshots with supply
+            w = weights.loc[share.index]
+            weighted_avg = (share * w).sum() / w.sum()
+
+            columns_data.append((node, share, weighted_avg))
+            results[(region, node)] = (share, weighted_avg)
+
+    if not columns_data:
+        print(f"No violin to plot for {combination_label(combination)}")
+        return results
+
+    # --------------------------------------------------
+    # Layout in inches, same columns as plot_load_duration_curves_combination
+    # --------------------------------------------------
+    n_nodes = len(columns_data)
+    W = left_margin + n_nodes * node_width + (n_nodes - 1) * node_gap + legend_width
+    H = top_margin + violin_height + bottom_margin
+    fig = plt.figure(figsize=(W, H))
+    y0 = bottom_margin
+
+    rng = np.random.default_rng(0)
+    for k, (node, share, avg) in enumerate(columns_data):
+        # violin centred in the column of its node
+        x_center = left_margin + k * (node_width + node_gap) + node_width / 2
+        ax = fig.add_axes([(x_center - violin_width / 2) / W, y0 / H,
+                           violin_width / W, violin_height / H])
+
+        if share is None:
+            ax.text(0.5, 0.5, "Hybrid\npower plant", transform=ax.transAxes,
+                    ha="center", va="center", fontsize=9, color="#777777")
+        else:
+            parts = ax.violinplot(share.values, positions=[0], widths=0.8,
+                                  showmeans=False, showmedians=False, showextrema=False)
+            for body in parts["bodies"]:
+                body.set_facecolor("#C8A2C8")
+                body.set_edgecolor("none")
+                body.set_alpha(0.6)
+            # one dot per snapshot, jittered horizontally inside the violin
+            jitter = rng.uniform(-0.15, 0.15, size=len(share))
+            ax.scatter(jitter, share.values, s=3, color="#9B6FB0", alpha=0.5,
+                       linewidths=0, zorder=3)
+            # time-weighted mean as a short black bar, with its value
+            ax.hlines(avg, -0.12, 0.12, color="black", linewidth=2.5, zorder=5)
+            ax.text(0.17, avg, f"{avg:.1f} %", va="center", ha="left", fontsize=8, zorder=6)
+
+        ax.set_xlim(-0.6, 0.6)
+        ax.set_xticks([])
+        ax.set_ylim(0, 105)
+        ax.set_yticks([0, 50, 100])
+        ax.tick_params(labelsize=8)
+        ax.grid(axis="y", linestyle=":", alpha=0.6)
+        if k == 0:
+            ax.set_ylabel("Self-supply [%]", fontsize=9)
+
+        # node name on top of its violin
+        fig.text(x_center / W, (H - 0.08) / H, node_label.replace("{node}", node),
+                 ha="center", va="top", fontsize=11, fontweight="bold")
+
+    # legend on the right
+    legend_x = (left_margin + n_nodes * node_width + (n_nodes - 1) * node_gap + 0.15) / W
+    fig.legend(
+        [Line2D([0], [0], color="black", linewidth=2.5)], ["Time-weighted mean"],
+        loc="center left", bbox_to_anchor=(legend_x, (y0 + violin_height / 2) / H),
+        frameon=False, fontsize=9, borderaxespad=0,
+    )
+
+    if save_path is not None:
+        fig.savefig(save_path, dpi=300)  # no cropping: keeps the alignment with panel a)
+    plt.show()
+
+    return results
 
 
 
@@ -2965,6 +3397,29 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
     config_plotting,
     label_to_colors,
     # save_path=PICTURES_DIR / "ClusterElectricityBalanceMaps_TwoRegionsElHeatmap.pdf",
+)
+
+# %%
+# Load duration curves and hourly self-supply violins of the renewable
+# clusters of selected nodes of both regions, for one combination
+
+# (CR, BUYcap, SELLcap, BOTHcap)
+combination = (0.3, 0, 0, 0.1)
+
+# one dict per region: metrics DataFrame and nodes whose clusters are plotted
+nodes = [
+    {"df": df_iberian, "nodes": ["ES0 11", "ES0 4"], "title": REGION_IBERIAN},
+    {"df": df_nordic, "nodes": ["DK1 0", 'GB2 4'], "title": REGION_NORDIC},
+]
+
+load_durations_combination = plot_load_duration_curves_combination(
+    combination, nodes,
+    # save_path=PICTURES_DIR / "HyClusterLoadDurationCurves.pdf",
+)
+
+self_supply_combination = plot_cluster_self_supply_violins_combination(
+    combination, nodes,
+    # save_path=PICTURES_DIR / "HyClusterSelfSupplyViolins.pdf",
 )
 
 # %%
