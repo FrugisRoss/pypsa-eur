@@ -2462,7 +2462,7 @@ def plot_cluster_self_supply_violin(n, node):
     return share, weighted_avg
 
 
-def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=None):
+def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=None, save_path=None):
     """Price duration curves of the electricity prices shown in
     ``plot_electricity_balance_by_cluster``:
       - inside the cluster   (bus "<node> renewable cluster" in ``n``)
@@ -2471,6 +2471,7 @@ def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=No
     Prices are sorted from highest to lowest; the x axis is the cumulative
     number of hours (snapshot weightings), so it runs from 0 to 8760.
     Prices above ``max_electricity_price`` are plotted as ``max_electricity_price``.
+    If ``save_path`` is given, the figure is saved there (e.g. as a PDF).
     """
 
     # only meaningful if the cluster actually runs an electrolyser:
@@ -2527,6 +2528,8 @@ def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=No
         ax.spines[spine].set_visible(False)
     ax.legend(loc="upper right", frameon=False, fontsize=9)
     fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, bbox_inches="tight")
     plt.show()
 
     return duration_curves
@@ -3308,7 +3311,8 @@ self_supply_share, self_supply_avg = plot_cluster_self_supply_violin(n, "ES0 11"
 
 self_supply_share, self_supply_avg = plot_cluster_self_supply_violin(n, "ES0 4")
 
-price_curves = plot_cluster_price_duration_curves(n, "ES0 11", max_electricity_price=250, n_base=n_base)
+price_curves = plot_cluster_price_duration_curves(n, "ES0 11", max_electricity_price=250, n_base=n_base,
+                                                  save_path=PICTURES_DIR / "PriceDurationCurves_ES0_11.pdf")
 
 price_curves = plot_cluster_price_duration_curves(n, "ES0 4", max_electricity_price=250, n_base=n_base)
 
@@ -3437,7 +3441,8 @@ load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["DK1 0"
 self_supply_share, self_supply_avg = plot_cluster_self_supply_violin(n, "DK1 0")
 
 
-price_curves = plot_cluster_price_duration_curves(n, "DK1 0", max_electricity_price=500, n_base=n_base)
+price_curves = plot_cluster_price_duration_curves(n, "DK1 0", max_electricity_price=500, n_base=n_base,
+                                                  save_path=PICTURES_DIR / "PriceDurationCurves_DK1_0.pdf")
 
 
 
