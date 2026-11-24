@@ -2523,7 +2523,8 @@ def plot_load_duration_curves_combination(
     small_capacity=70,
     min_generator_capacity=10,
     min_capacity=1,
-    hybrid_electrolyser_capacity=1,
+    max_hidden_electrolyser_capacity=5,
+    hybrid_electrolyser_capacity=5,
     hybrid_generator_carriers=("solar", "solar-hsat", "onwind"),
     y_max_large=1000,
     y_max_small=60,
@@ -2578,6 +2579,9 @@ def plot_load_duration_curves_combination(
     min_capacity : float
         No component (generator or link) with a capacity < ``min_capacity``
         [MW] is ever plotted.
+    max_hidden_electrolyser_capacity : float
+        Electrolysers ('H2 Electrolysis' links) with a capacity <= this value
+        [MW] are not plotted.
     hybrid_electrolyser_capacity : float
         If the electrolyser of the cluster of a node ('<node> H2 Electrolysis
         renewable cluster') has a capacity <= this value [MW] (or does not
@@ -2745,6 +2749,8 @@ def plot_load_duration_curves_combination(
 
                 if pnom < min_capacity:
                     continue  # capacities below min_capacity are never plotted
+                if "H2 Electrolysis" in techname and pnom <= max_hidden_electrolyser_capacity:
+                    continue  # small electrolysers are not plotted
 
                 curve = timeserie.sort_values(ascending=False).reset_index(drop=True)
                 if not curve.le(0.0001).all():
@@ -3588,7 +3594,7 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
 # clusters of selected nodes of both regions, for one combination
 
 # (CR, BUYcap, SELLcap, BOTHcap)
-combination = (0.3, 0, 0, 0.1)
+combination = (0.0, 0, 0, 0.5)
 
 # one dict per region: metrics DataFrame and nodes whose clusters are plotted
 nodes = [
@@ -3598,7 +3604,7 @@ nodes = [
 
 load_durations_combination = plot_load_duration_curves_combination(
     combination, nodes,
-    save_path=PICTURES_DIR / "HyClusterLoadDurationCurves.pdf",
+    save_path=PICTURES_DIR / "HyPPClusterLoadDurationCurves.pdf",
 )
 
 self_supply_combination = plot_cluster_self_supply_violins_combination(

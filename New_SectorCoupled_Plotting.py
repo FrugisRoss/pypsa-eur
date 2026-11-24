@@ -3438,7 +3438,7 @@ df = pd.DataFrame(records)
 
 
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
 
 n_base=pypsa.Network(networks_folder+r"/base_s_100_lv1.0_3h_2035.nc")
 
