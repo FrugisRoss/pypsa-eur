@@ -1945,16 +1945,20 @@ def plot_load_duration_curve(n,tech_dictionary,nodes,
             large, small = list(load_durations.columns), []
         else:
             large = [c for c in load_durations.columns if pnoms[c] > small_capacity]
-            small = [c for c in load_durations.columns if pnoms[c] <= small_capacity]
-        panels = [(cols, label) for cols, label in
-                  [(large, f"Large capacities (> {small_capacity:,.0f} MW)"
-                    if small_capacity is not None else "Capacities"),
-                   (small, f"Small capacities (≤ {small_capacity:,.0f} MW)"
-                    if small_capacity is not None else "")]
-                  if cols]
+            # technologies below 1 MW are not plotted at all
+            small = [c for c in load_durations.columns
+                     if 1 <= pnoms[c] <= small_capacity]
+        if large and small:
+            panels = [(large, f"Large capacities (> {small_capacity:,.0f} MW)"),
+                      (small, f"Small capacities (≤ {small_capacity:,.0f} MW)")]
+        else:
+            # only one panel left: it takes the full figure, no panel title
+            panels = [(cols, "") for cols in (large, small) if cols]
+        if not panels:
+            continue
 
         fig, axes = plt.subplots(len(panels), 1, sharex=True,
-                                 figsize=(12, 2.8 * len(panels)),
+                                 figsize=(12, 5.6),
                                  layout="constrained", squeeze=False)
         axes = axes[:, 0]
 
@@ -2462,7 +2466,8 @@ def plot_cluster_self_supply_violin(n, node):
     return share, weighted_avg
 
 
-def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=None, save_path=None):
+def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=None, save_path=None,
+                                       max_hours=8760):
     """Price duration curves of the electricity prices shown in
     ``plot_electricity_balance_by_cluster``:
       - inside the cluster   (bus "<node> renewable cluster" in ``n``)
@@ -2472,6 +2477,8 @@ def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=No
     number of hours (snapshot weightings), so it runs from 0 to 8760.
     Prices above ``max_electricity_price`` are plotted as ``max_electricity_price``.
     If ``save_path`` is given, the figure is saved there (e.g. as a PDF).
+    ``max_hours`` limits the x axis, e.g. max_hours=1000 zooms on the
+    1000 hours with the highest prices.
     """
 
     # only meaningful if the cluster actually runs an electrolyser:
@@ -2486,9 +2493,11 @@ def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=No
         .mul(n.snapshot_weightings.generators, axis=0)
         .sum().sum() / 10**3
     )  # GWh
-    if electrolyser_consumption <= 5:
-        print(f"the cluster in {node} is a hybrid powerplant. The price duration curve plot doesn't make sense")
-        return None
+    # hybrid powerplant: the price inside the cluster is not meaningful,
+    # so only the prices outside the cluster are plotted
+    hybrid = electrolyser_consumption <= 5
+    if hybrid:
+        print(f"the cluster in {node} is a hybrid powerplant")
 
     def duration_curve(network, bus):
         price = network.buses_t.marginal_price[bus]
@@ -2499,12 +2508,12 @@ def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=No
         # repeat the last value so each snapshot spans its full weighting
         return hours, np.append(sorted_price.values, sorted_price.values[-1])
 
-    curves = [
-        (n, f"{node} renewable cluster", "Electricity price inside the cluster",
-         dict(color="navy", linestyle="-")),
-        (n, node, "Electricity price outside the cluster",
-         dict(color="red", linestyle="-")),
-    ]
+    curves = []
+    if not hybrid:
+        curves.append((n, f"{node} renewable cluster", "Electricity price inside the cluster",
+                       dict(color="navy", linestyle="-")))
+    curves.append((n, node, "Electricity price outside the cluster",
+                   dict(color="red", linestyle="-")))
     if n_base is not None:
         curves.append((n_base, node, "Electricity price outside the cluster (baseline)",
                        dict(color="red", linestyle="--", alpha=0.6)))
@@ -2517,8 +2526,10 @@ def plot_cluster_price_duration_curves(n, node, max_electricity_price, n_base=No
         duration_curves[label] = pd.Series(prices[:-1], index=hours[:-1])
 
     ax.axhline(max_electricity_price, color="grey", linewidth=0.8, linestyle=":")
-    ax.set_xlim(0, 8760)
-    ax.set_ylim(bottom=min(0, ax.get_ylim()[0]), top=max_electricity_price * 1.05)
+    ax.set_xlim(0, max_hours)
+    # y axis fitted to the prices shown in the zoomed window
+    visible_min = min(s[s.index < max_hours].min() for s in duration_curves.values())
+    ax.set_ylim(bottom=min(0, visible_min * 1.05), top=max_electricity_price * 1.05)
     ax.set_xlabel("Hours of the year")
     ax.set_ylabel("Electricity price [€/MWh]")
     ax.set_title(f"Electricity price duration curves at {node}",
@@ -3298,7 +3309,7 @@ df = pd.DataFrame(records)
 
 #%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
 
 n_base=pypsa.Network(networks_folder+r"/base_s_40_lv1.0_3h_2035.nc")
 
@@ -3307,16 +3318,18 @@ cluster_components = (
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
 )
 
-load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 11"])
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 12"], small_capacity=None)
 
-load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 4"])
+load_durations, pnoms = plot_load_duration_curve(n, cluster_components, ["ES0 4"], small_capacity=None)
 
-self_supply_share, self_supply_avg = plot_cluster_self_supply_violin(n, "ES0 11")
+self_supply_share, self_supply_avg = plot_cluster_self_supply_violin(n, "ES0 12")
 
 self_supply_share, self_supply_avg = plot_cluster_self_supply_violin(n, "ES0 4")
 
-price_curves = plot_cluster_price_duration_curves(n, "ES0 11", max_electricity_price=250, n_base=n_base,
-                                                  save_path=PICTURES_DIR / "PriceDurationCurves_ES0_11.pdf")
+price_curves = plot_cluster_price_duration_curves(n, "ES0 12", max_electricity_price=250, n_base=n_base,
+                   #                               save_path=PICTURES_DIR / "PriceDurationCurves_ES0_11.pdf"
+                                                    # max_hours=100
+                                                    )
 
 price_curves = plot_cluster_price_duration_curves(n, "ES0 4", max_electricity_price=250, n_base=n_base)
 

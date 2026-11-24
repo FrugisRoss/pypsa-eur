@@ -2522,6 +2522,9 @@ def plot_load_duration_curves_combination(
     node_label="{node}",
     small_capacity=70,
     min_generator_capacity=10,
+    min_capacity=1,
+    hybrid_electrolyser_capacity=1,
+    hybrid_generator_carriers=("solar", "solar-hsat", "onwind"),
     left_margin=0.75,
     node_width=2.6,
     node_gap=0.55,
@@ -2570,6 +2573,19 @@ def plot_load_duration_curves_combination(
         the bottom row (None: top row only).
     min_generator_capacity : float
         Generators below this capacity [MW] are not plotted.
+    min_capacity : float
+        No component (generator or link) with a capacity < ``min_capacity``
+        [MW] is ever plotted.
+    hybrid_electrolyser_capacity : float
+        If the electrolyser of the cluster of a node ('<node> H2 Electrolysis
+        renewable cluster') has a capacity <= this value [MW] (or does not
+        exist), the cluster is a hybrid power plant: a message is printed,
+        its column has a single panel (no large / small capacity split)
+        and below it only the battery capacity and the share of energy
+        curtailed in the cluster over the year are written.
+    hybrid_generator_carriers : tuple of str
+        Generators of the cluster used for the curtailed share:
+        1 - sum_t,g p[t, g] / sum_t,g p_max_pu[t, g] * p_nom_opt[g].
     storages : tuple of (store name, label, unit)
         Stores whose capacity (e_nom_opt of '<node> <store name> renewable
         cluster') is written below the column of every node, one line
@@ -2585,10 +2601,13 @@ def plot_load_duration_curves_combination(
     Returns
     -------
     dict {(region title, node): (load_durations DataFrame, pnoms dict,
-                                 dict {store name: (e_nom_opt, equivalent load hours)})}
+                                 dict {store name: (e_nom_opt, equivalent load hours)},
+                                 curtailed share if hybrid power plant else None)}
     """
     results = {}
-    columns_data = []  # per node, in plotting order: (node, load_durations or None, pnoms, storage capacities)
+    # per node, in plotting order: (node, load_durations or None, pnoms,
+    # storage capacities, curtailed share if hybrid power plant else None)
+    columns_data = []
     x_max = 0
 
     for i, case in enumerate(nodes):
@@ -2607,7 +2626,8 @@ def plot_load_duration_curves_combination(
         # New_SectorCoupled_Plotting.py)
         components = (
             [("link", idx) for idx in n.links.index
-             if "cluster" in idx and "discharger" not in idx
+             if "cluster" in idx 
+             #and "discharger" not in idx
              and "methanol renewable cluster" not in idx
              and n.links.at[idx, "p_nom_opt"] > 0.1]
             + [("generator", idx) for idx in n.generators.index
@@ -2658,6 +2678,24 @@ def plot_load_duration_curves_combination(
                 for store, _, _ in storages
             }
 
+            # hybrid power plant: (almost) no electrolyser in the cluster
+            curtailed_share = None
+            if link_capacity("H2 Electrolysis") <= hybrid_electrolyser_capacity:
+                print(f"The cluster in {node} is an hybrid powerplant")
+                # share of the available renewable energy of the cluster
+                # generators that is curtailed over the year
+                gens = [
+                    g for g in n.generators.index
+                    if g.startswith(node + " ") and "cluster" in g
+                    and g[len(node):].strip().split(" ", 1)[-1]
+                        .replace(" renewable cluster", "") in hybrid_generator_carriers
+                ]
+                produced = n.generators_t["p"][gens].sum().sum()
+                available = (n.generators_t["p_max_pu"].reindex(columns=gens).fillna(
+                                 n.generators.loc[gens, "p_max_pu"])
+                             * n.generators.loc[gens, "p_nom_opt"]).sum().sum()
+                curtailed_share = 1 - produced / available if available > 1e-9 else 0.0
+
             for techtype, techname in components:
                 if (node + " ") not in techname:
                     continue
@@ -2679,6 +2717,9 @@ def plot_load_duration_curves_combination(
                     label = label[2:]  # drop the resource class ("0 solar ..." -> "solar ...")
                 label = cluster_link_display_names.get(label, label)
 
+                if pnom < min_capacity:
+                    continue  # capacities below min_capacity are never plotted
+
                 curve = timeserie.sort_values(ascending=False).reset_index(drop=True)
                 if not curve.le(0.0001).all():
                     curves[label] = curve
@@ -2689,11 +2730,11 @@ def plot_load_duration_curves_combination(
                 # keep an empty column so the nodes stay aligned with the violins
                 print(f"{region}: no renewable cluster component in operation at {node} "
                       f"for {combination_label(combination)}")
-                columns_data.append((node, None, {}, storage_info))
+                columns_data.append((node, None, {}, storage_info, curtailed_share))
                 continue
             load_durations.index = load_durations.index * h_per_snapshot  # hours
-            columns_data.append((node, load_durations, pnoms, storage_info))
-            results[(region, node)] = (load_durations, pnoms, storage_info)
+            columns_data.append((node, load_durations, pnoms, storage_info, curtailed_share))
+            results[(region, node)] = (load_durations, pnoms, storage_info, curtailed_share)
 
     if not columns_data:
         print(f"No load duration curve to plot for {combination_label(combination)}")
@@ -2704,8 +2745,10 @@ def plot_load_duration_curves_combination(
     # bottom row small capacities, legends on the right
     # --------------------------------------------------
     n_nodes = len(columns_data)
-    two_rows = small_capacity is not None
-    W = left_margin + n_nodes * node_width + (n_nodes - 1) * node_gap + legend_width
+    is_hybrid = [c[4] is not None for c in columns_data]
+    # two rows only if at least one node is not a hybrid power plant
+    two_rows = small_capacity is not None and not all(is_hybrid)
+    W =left_margin + n_nodes * node_width + (n_nodes - 1) * node_gap + legend_width
     H = top_margin + large_height + (panel_gap + small_height if two_rows else 0) + bottom_margin
     fig = plt.figure(figsize=(W, H))
 
@@ -2719,28 +2762,40 @@ def plot_load_duration_curves_combination(
 
     # same y axis for all the nodes in a row: up to the largest nominal
     # capacity of that row over all the nodes (x 1.1 for readability)
+    # (hybrid power plants have their own single panel and y axis)
     row_max = [0.0 for _ in row_specs]
-    for _, load_durations, pnoms, _ in columns_data:
+    for (_, load_durations, pnoms, _, _), hybrid in zip(columns_data, is_hybrid):
+        if hybrid:
+            continue
         for tech, pnom in pnoms.items():
             r = 1 if two_rows and pnom <= small_capacity else 0
             row_max[r] = max(row_max[r], pnom)
 
+    # single panel of a hybrid power plant: whole height of the rows, no row label
+    _, last_bottom, _ = row_specs[-1]
+    hybrid_spec = [(None, last_bottom, large_bottom + large_height - last_bottom)]
+    # grey row labels on the first non-hybrid column
+    first_split = next((k for k, h in enumerate(is_hybrid) if not h), None)
+
     tech_handles = {}  # legend entries, in order of appearance
 
-    for k, (node, load_durations, pnoms, storage_info) in enumerate(columns_data):
+    for k, (node, load_durations, pnoms, storage_info, curtailed_share) in enumerate(columns_data):
         x0 = left_margin + k * (node_width + node_gap)
+        hybrid = is_hybrid[k]
+        specs = hybrid_spec if hybrid else row_specs
 
         if load_durations is None:
-            row_cols = [[] for _ in row_specs]
-        elif not two_rows:
+            row_cols = [[] for _ in specs]
+        elif hybrid or not two_rows:
             row_cols = [list(load_durations.columns)]
         else:
             row_cols = [
                 [c for c in load_durations.columns if pnoms[c] > small_capacity],
                 [c for c in load_durations.columns if pnoms[c] <= small_capacity],
             ]
+        y_max = ([max((pnoms[c] for c in row_cols[0]), default=0.0)] if hybrid else row_max)
 
-        for r, ((row_label, y0, height), cols) in enumerate(zip(row_specs, row_cols)):
+        for r, ((row_label, y0, height), cols) in enumerate(zip(specs, row_cols)):
             ax = fig.add_axes([x0 / W, y0 / H, node_width / W, height / H])
 
             for tech in cols:
@@ -2756,7 +2811,7 @@ def plot_load_duration_curves_combination(
 
             ax.set_xlim(0, x_max)
             if cols:
-                ax.set_ylim(0, row_max[r] * 1.1)
+                ax.set_ylim(0, y_max[r] * 1.1)
             else:
                 ax.set_yticks([])
                 ax.text(0.5, 0.5, "None", transform=ax.transAxes,
@@ -2765,31 +2820,44 @@ def plot_load_duration_curves_combination(
             ax.grid(False)
 
             # hour axis on the bottom row only
-            if r == len(row_specs) - 1:
+            if r == len(specs) - 1:
                 ax.set_xlabel("Hours", fontsize=9)
             else:
                 ax.tick_params(axis="x", labelbottom=False)
 
-            # y label and grey row label on the first column only
+            # y label on the first column only
             if k == 0:
                 ax.set_ylabel("Power [MW]", fontsize=9)
                 # same distance from the axis in both rows, whatever the tick labels
                 ax.yaxis.set_label_coords(-0.5 / node_width, 0.5)
-                if row_label:
-                    ax.set_title(row_label, loc="left", fontsize=8, color="#777777", pad=3)
+            # grey row label on the first non-hybrid column only
+            if k == first_split and row_label:
+                ax.set_title(row_label, loc="left", fontsize=8, color="#777777", pad=3)
 
         # node name on top of its column
         fig.text((x0 + node_width / 2) / W, (H - 0.08) / H, node_label.replace("{node}", node),
                  ha="center", va="top", fontsize=11, fontweight="bold")
 
-        # storage capacities below the column (under the hour axis), one line each
-        for j, (store, store_label, unit) in enumerate(storages):
-            e_nom, hours = storage_info[store]
-            value = f"{e_nom:,.1f} {unit}" if e_nom is not None else "-"
-            if hours is not None:
-                value += f" ({hours:,.2f} h)"
+        # text below the column (under the hour axis), one line each
+        if hybrid:
+            # hybrid power plant: battery capacity and curtailed share only
+            e_nom = storage_info.get("battery", (None, None))[0]
+            lines = [
+                f"Battery storage: {e_nom:,.1f} MWh" if e_nom is not None else "Battery storage: -",
+                f"Curtailed energy: {curtailed_share:.1%}",
+            ]
+        else:
+            # storage capacities
+            lines = []
+            for store, store_label, unit in storages:
+                e_nom, hours = storage_info[store]
+                value = f"{e_nom:,.1f} {unit}" if e_nom is not None else "-"
+                if hours is not None:
+                    value += f" ({hours:,.2f} h)"
+                lines.append(f"{store_label}: {value}")
+        for j, line in enumerate(lines):
             fig.text((x0 + node_width / 2) / W, (bottom_margin - 0.5 - j * 0.17) / H,
-                     f"{store_label}: {value}", ha="center", va="top", fontsize=8)
+                     line, ha="center", va="top", fontsize=8)
 
     # legends on the right: technologies next to the top row, nominal
     # installed capacity next to the bottom row
@@ -2800,7 +2868,6 @@ def plot_load_duration_curves_combination(
         loc="upper left", bbox_to_anchor=(legend_x, (large_bottom + large_height) / H),
         frameon=False, fontsize=9, handlelength=2.5, borderaxespad=0,
     )
-    _, last_bottom, _ = row_specs[-1]
     fig.legend(
         [Line2D([0], [0], color="#555555", linestyle=(0, (5, 3)), linewidth=1.2)],
         ["Nominal installed capacity"],
@@ -3498,7 +3565,7 @@ combination = (0.3, 0, 0, 0.1)
 
 # one dict per region: metrics DataFrame and nodes whose clusters are plotted
 nodes = [
-    {"df": df_iberian, "nodes": ["ES0 11", "ES0 4"], "title": REGION_IBERIAN},
+    {"df": df_iberian, "nodes": ["ES0 11",'ES0 4'], "title": REGION_IBERIAN},
     {"df": df_nordic, "nodes": ["DK1 0", 'GB2 4'], "title": REGION_NORDIC},
 ]
 
@@ -3509,7 +3576,7 @@ load_durations_combination = plot_load_duration_curves_combination(
 
 self_supply_combination = plot_cluster_self_supply_violins_combination(
     combination, nodes,
-    save_path=PICTURES_DIR / "HyClusterSelfSupplyViolins.pdf",
+   # save_path=PICTURES_DIR / "HyClusterSelfSupplyViolins.pdf",
 )
 
 # %%
