@@ -3289,6 +3289,152 @@ def plot_cluster_electricity_balance_map(
     return bus_size
 
 
+def _electricity_capacities_cluster_vs_outside(n, bus_carriers, exclude_carriers,
+                                               min_supply):
+    """Optimised capacities [MW] of electricity-producing technologies,
+    index: carrier, columns: 'outside', 'cluster'."""
+    bus_carriers = list(bus_carriers)
+    tables = [n.generators, n.links, n.storage_units, n.stores, n.lines, n.loads]
+
+    # temporary column: inside the renewable cluster or not (by component name)
+    for df in tables:
+        df["cluster"] = np.where(
+            df.index.str.contains("renewable cluster"), "cluster", "outside"
+        )
+    try:
+        grouping = ["carrier", "cluster"]
+        supply = n.statistics.supply(bus_carrier=bus_carriers, groupby=grouping,
+                                     nice_names=False)
+        caps = n.statistics.optimal_capacity(bus_carrier=bus_carriers, groupby=grouping,
+                                             nice_names=False)
+    finally:
+        for df in tables:
+            df.drop(columns="cluster", inplace=True)
+
+    supply = supply.drop(list(exclude_carriers), level="carrier", errors="ignore")
+    supply = supply.drop(["Line", "Load"], level="component", errors="ignore")
+    producers = supply[supply > min_supply].index
+
+    # per carrier (summed over component types), one column per side
+    caps = (caps.reindex(producers)
+                .groupby(level=["carrier", "cluster"]).sum()
+                .unstack("cluster")
+                .reindex(columns=["outside", "cluster"])
+                .fillna(0.0))
+    return caps
+
+
+def plot_electricity_capacities_cluster_vs_outside(
+    n,
+    n_base=None,
+    bus_carriers=("AC", "low voltage"),
+    exclude_carriers=("AC", "DC", "electricity distribution grid"),
+    min_supply=1,
+    min_capacity=1,
+    save_path=None,
+    title=None,
+):
+    """Two bar charts of the optimised capacities of the technologies that
+    produce electricity: left the ones outside the renewable clusters, right
+    the ones inside (component name contains 'renewable cluster').
+
+    If ``n_base`` is given, the left panel shows instead the difference of the
+    capacities outside the renewable clusters with respect to ``n_base``
+    (n - n_base, positive = more capacity in n). The right panel is unchanged.
+
+    A technology produces electricity if it supplies more than ``min_supply``
+    [MWh] over the year to a bus with carrier in ``bus_carriers``
+    (n.statistics.supply). Transmission / distribution carriers in
+    ``exclude_carriers`` are left out; note that the cluster grid connection
+    links have the carrier of the node bus (AC), so they are left out too.
+    Capacities are n.statistics.optimal_capacity, summed per carrier over
+    all component types; only capacities (or absolute differences)
+    > ``min_capacity`` [MW] are shown.
+
+    ``title`` (optional str) is shown as the figure title above both panels.
+    If ``save_path`` is given, the figure is saved there (e.g. as a PDF).
+
+    Returns
+    -------
+    pd.DataFrame
+        Capacities [MW], index: carrier, columns: 'outside', 'cluster'
+        (+ 'outside_base' and 'outside_diff' if ``n_base`` is given).
+    """
+    caps = _electricity_capacities_cluster_vs_outside(
+        n, bus_carriers, exclude_carriers, min_supply)
+
+    if n_base is not None:
+        base = _electricity_capacities_cluster_vs_outside(
+            n_base, bus_carriers, exclude_carriers, min_supply)
+        caps = caps.reindex(caps.index.union(base.index)).fillna(0.0)
+        caps["outside_base"] = base["outside"].reindex(caps.index).fillna(0.0)
+        caps["outside_diff"] = caps["outside"] - caps["outside_base"]
+
+    def color(carrier):
+        if carrier in label_to_colors:
+            return label_to_colors[carrier]
+        c = n.carriers.color.get(carrier, "") if "color" in n.carriers else ""
+        return c if isinstance(c, str) and c else "#cccccc"
+
+    def nice(carrier):
+        name = n.carriers.nice_name.get(carrier, "") if "nice_name" in n.carriers else ""
+        return name if isinstance(name, str) and name else carrier
+
+    is_diff = n_base is not None
+    left_col = "outside_diff" if is_diff else "outside"
+    left_title = ("Outside the renewable clusters\n(difference vs. base)"
+                  if is_diff else "Outside the renewable clusters")
+
+    fig, axes = plt.subplots(1, 2, figsize=(14, 5.5))
+    for ax, side, panel_title in zip(axes, [left_col, "cluster"],
+                               [left_title, "Inside the renewable clusters"]):
+        diff_panel = side == "outside_diff"
+        col = caps[side]
+        if diff_panel:
+            values = col[col.abs() > min_capacity].sort_values(ascending=False)
+        else:
+            values = col[col > min_capacity].sort_values(ascending=False)
+        if values.empty:
+            ax.text(0.5, 0.5, "None", transform=ax.transAxes,
+                    ha="center", va="center", fontsize=11, color="#777777")
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_title(panel_title, fontsize=12, fontweight="bold")
+            continue
+
+        # GW if the largest capacity is above 10 GW, MW otherwise
+        scale, unit = (1e3, "GW") if values.abs().max() > 1e4 else (1.0, "MW")
+        x = np.arange(len(values))
+        ax.bar(x, values.values / scale, color=[color(c) for c in values.index],
+               edgecolor="white", linewidth=0.5, zorder=3)
+        for xi, v in zip(x, values.values / scale):
+            label = f"{v:+,.1f}" if diff_panel else f"{v:,.1f}"
+            ax.text(xi, v, label, ha="center", va="bottom" if v >= 0 else "top",
+                    fontsize=8)
+
+        ax.set_xticks(x)
+        ax.set_xticklabels([nice(c) for c in values.index], rotation=45, ha="right",
+                           fontsize=9)
+        if diff_panel:
+            ax.axhline(0, color="black", linewidth=0.8, zorder=4)
+            ax.set_ylabel(f"Δ optimised capacity vs. base [{unit}]")
+        else:
+            ax.set_ylabel(f"Optimised capacity [{unit}]")
+        ax.set_title(panel_title, fontsize=12, fontweight="bold")
+        ax.grid(axis="y", linestyle=":", alpha=0.6, zorder=0)
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+
+    if title:
+        fig.suptitle(title, fontsize=13, fontweight="bold")
+    fig.tight_layout()
+    if save_path is not None:
+        fig.savefig(save_path, bbox_inches="tight")
+    plt.show()
+
+    return caps
+
+
 PICTURES_DIR = Path("/work/users/rofrug/projects/pypsa-eur/pictures")
 PICTURES_DIR.mkdir(parents=True, exist_ok=True)
 #%%
@@ -3307,12 +3453,26 @@ for path in sorted(Path(networks_folder).glob("*.nc")):
 df = pd.DataFrame(records)
 
 
-#%%
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.4) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.0), "path"].iloc[0]))
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.1) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.3), "path"].iloc[0]))
 
 n_base=pypsa.Network(networks_folder+r"/base_s_40_lv1.0_3h_2035.nc")
 
+el_caps_base = plot_electricity_capacities_cluster_vs_outside(n_base, title='Base', save_path=PICTURES_DIR / "ElCapacities_Iberian_Base.pdf")
+el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0.1, capBUY = 0, capSELL = 0, capBOTH = 0.3", save_path=PICTURES_DIR / "ElCapacitiesDiff_Iberian_CR0p1_BOTHcap0p3.pdf")
+el_caps = plot_electricity_capacities_cluster_vs_outside(n,  title="CR = 0.1, capBUY = 0, capSELL = 0, capBOTH = 0.3")
+
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0.3, capBUY = 0, capSELL = 0, capBOTH = 0.1", save_path=PICTURES_DIR / "ElCapacitiesDiff_Iberian_CR0p3_BOTHcap0p1.pdf")
+el_caps = plot_electricity_capacities_cluster_vs_outside(n,  title="CR = 0.3, capBUY = 0, capSELL = 0, capBOTH = 0.1")
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
+el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0, capBUY = 0, capSELL = 0, capBOTH = 0", save_path=PICTURES_DIR / "ElCapacitiesDiff_Iberian_CR0_BOTHcap0p5.pdf")
+
+
+#%%
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
@@ -3438,10 +3598,24 @@ df = pd.DataFrame(records)
 
 
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
+n = pypsa.Network(str(df.loc[(df.CR == 0.1) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.3), "path"].iloc[0]))
 
 n_base=pypsa.Network(networks_folder+r"/base_s_100_lv1.0_3h_2035.nc")
 
+el_caps_base = plot_electricity_capacities_cluster_vs_outside(n, title="Base", save_path=PICTURES_DIR / "ElCapacities_Nordics_Base.pdf")
+
+el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0.1, capBUY = 0, capSELL = 0, capBOTH = 0.3", save_path=PICTURES_DIR / "ElCapacitiesDiff_Nordics_CR0p1_BOTHcap0p3.pdf")
+el_caps = plot_electricity_capacities_cluster_vs_outside(n,  title="CR = 0.1, capBUY = 0, capSELL = 0, capBOTH = 0.3")
+
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.1), "path"].iloc[0]))
+el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0.3, capBUY = 0, capSELL = 0, capBOTH = 0.1", save_path=PICTURES_DIR / "ElCapacitiesDiff_Nordics_CR0p3_BOTHcap0p1.pdf")
+el_caps = plot_electricity_capacities_cluster_vs_outside(n,  title="CR = 0.3, capBUY = 0, capSELL = 0, capBOTH = 0.1")
+
+n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
+el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0, capBUY = 0, capSELL = 0, capBOTH = 0", save_path=PICTURES_DIR / "ElCapacitiesDiff_Nordics_CR0_BOTHcap0p5.pdf")
+
+#%%
 cluster_components = (
     [("link", idx) for idx in n.links.index if ("cluster" in idx and "discharger" not in idx and "methanol renewable cluster" not in idx and n.links.loc[idx, "p_nom_opt"] > 0.1)]
     + [("generator", idx) for idx in n.generators.index if ("cluster" in idx and n.generators.loc[idx, "p_nom_opt"] > 0.1)]
