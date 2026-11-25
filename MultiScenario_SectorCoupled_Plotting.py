@@ -3594,17 +3594,17 @@ bus_sizes_two_regions = plot_cluster_electricity_balance_maps_two_regions(
 # clusters of selected nodes of both regions, for one combination
 
 # (CR, BUYcap, SELLcap, BOTHcap)
-combination = (0.0, 0, 0, 0.5)
+combination = (0.4, 0, 0, 0.0)
 
 # one dict per region: metrics DataFrame and nodes whose clusters are plotted
 nodes = [
-    {"df": df_iberian, "nodes": ["ES0 11",'ES0 4'], "title": REGION_IBERIAN},
-    {"df": df_nordic, "nodes": ["DK1 0", 'GB2 4'], "title": REGION_NORDIC},
+    {"df": df_iberian, "nodes": ["ES0 11"], "title": REGION_IBERIAN},
+    {"df": df_nordic, "nodes": ["DK1 0"], "title": REGION_NORDIC},
 ]
 
 load_durations_combination = plot_load_duration_curves_combination(
     combination, nodes,
-    save_path=PICTURES_DIR / "HyPPClusterLoadDurationCurves.pdf",
+    save_path=PICTURES_DIR / "FPoffgridClusterLoadDurationCurves.pdf",
 )
 
 self_supply_combination = plot_cluster_self_supply_violins_combination(
