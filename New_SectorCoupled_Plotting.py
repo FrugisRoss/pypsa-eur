@@ -3468,8 +3468,8 @@ n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap =
 el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0.3, capBUY = 0, capSELL = 0, capBOTH = 0.1", save_path=PICTURES_DIR / "ElCapacitiesDiff_Iberian_CR0p3_BOTHcap0p1.pdf")
 el_caps = plot_electricity_capacities_cluster_vs_outside(n,  title="CR = 0.3, capBUY = 0, capSELL = 0, capBOTH = 0.1")
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
-el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0, capBUY = 0, capSELL = 0, capBOTH = 0", save_path=PICTURES_DIR / "ElCapacitiesDiff_Iberian_CR0_BOTHcap0p5.pdf")
+n = pypsa.Network(str(df.loc[(df.CR == 0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
+el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0, capBUY = 0, capSELL = 0, capBOTH = 0.5", save_path=PICTURES_DIR / "ElCapacitiesDiff_Iberian_CR0_BOTHcap0p5.pdf")
 
 
 #%%
@@ -3612,8 +3612,8 @@ n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap =
 el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0.3, capBUY = 0, capSELL = 0, capBOTH = 0.1", save_path=PICTURES_DIR / "ElCapacitiesDiff_Nordics_CR0p3_BOTHcap0p1.pdf")
 el_caps = plot_electricity_capacities_cluster_vs_outside(n,  title="CR = 0.3, capBUY = 0, capSELL = 0, capBOTH = 0.1")
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.3) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
-el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0, capBUY = 0, capSELL = 0, capBOTH = 0", save_path=PICTURES_DIR / "ElCapacitiesDiff_Nordics_CR0_BOTHcap0p5.pdf")
+n = pypsa.Network(str(df.loc[(df.CR == 0.0) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.5), "path"].iloc[0]))
+el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0, capBUY = 0, capSELL = 0, capBOTH = 0.5", save_path=PICTURES_DIR / "ElCapacitiesDiff_Nordics_CR0_BOTHcap0p5.pdf")
 
 #%%
 cluster_components = (
