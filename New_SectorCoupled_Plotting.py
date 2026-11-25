@@ -3598,12 +3598,12 @@ df = pd.DataFrame(records)
 
 
 
-n = pypsa.Network(str(df.loc[(df.CR == 0.1) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.3), "path"].iloc[0]))
 
 n_base=pypsa.Network(networks_folder+r"/base_s_100_lv1.0_3h_2035.nc")
 
 el_caps_base = plot_electricity_capacities_cluster_vs_outside(n_base, title="Base", save_path=PICTURES_DIR / "ElCapacities_Nordics_Base.pdf")
 
+n = pypsa.Network(str(df.loc[(df.CR == 0.1) & (df.BUYcap == 0.0) & (df.SELLcap == 0.0)  & (df.BOTHcap == 0.3), "path"].iloc[0]))
 el_caps = plot_electricity_capacities_cluster_vs_outside(n, n_base=n_base, title="CR = 0.1, capBUY = 0, capSELL = 0, capBOTH = 0.3", save_path=PICTURES_DIR / "ElCapacitiesDiff_Nordics_CR0p1_BOTHcap0p3.pdf")
 el_caps = plot_electricity_capacities_cluster_vs_outside(n,  title="CR = 0.1, capBUY = 0, capSELL = 0, capBOTH = 0.3")
 
